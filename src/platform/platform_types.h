@@ -858,6 +858,114 @@ namespace Vk {
     inline int GetSystemMetricsForDpi(int, unsigned int) { return 0; }
     #define WM_GETDLGCODE 0x87
 
+    // WinHTTP stubs (supporter fetch — cpp-httplib already available on Linux)
+    using HINTERNET = void*;
+    struct URL_COMPONENTS { unsigned long dwStructSize; wchar_t* lpszScheme; unsigned long dwSchemeLength; unsigned long nScheme; wchar_t* lpszHostName; unsigned long dwHostNameLength; unsigned short nPort; wchar_t* lpszUserName; unsigned long dwUserNameLength; wchar_t* lpszPassword; unsigned long dwPasswordLength; wchar_t* lpszUrlPath; unsigned long dwUrlPathLength; wchar_t* lpszExtraInfo; unsigned long dwExtraInfoLength; };
+    #define INTERNET_SCHEME_HTTPS 2
+    #define WINHTTP_FLAG_SECURE 0x800000
+    #define WINHTTP_QUERY_STATUS_CODE 19
+    #define WINHTTP_QUERY_FLAG_NUMBER 0x20000000
+    #define WINHTTP_HEADER_NAME_BY_INDEX nullptr
+    #define WINHTTP_NO_HEADER_INDEX 0xFFFFFFFF
+    #define WINHTTP_QUERY_CONTENT_TYPE 1
+    inline HINTERNET WinHttpOpen(const wchar_t*, unsigned long, const wchar_t*, const wchar_t*, unsigned long) { return nullptr; }
+    inline HINTERNET WinHttpConnect(HINTERNET, const wchar_t*, unsigned short, unsigned long) { return nullptr; }
+    inline HINTERNET WinHttpOpenRequest(HINTERNET, const wchar_t*, const wchar_t*, const wchar_t*, const wchar_t*, const wchar_t**, unsigned long) { return nullptr; }
+    inline int WinHttpSetTimeouts(HINTERNET, int, int, int, int) { return 0; }
+    inline int WinHttpSendRequest(HINTERNET, const wchar_t*, unsigned long, void*, unsigned long, unsigned long, unsigned long) { return 0; }
+    inline int WinHttpReceiveResponse(HINTERNET, void*) { return 0; }
+    inline int WinHttpQueryHeaders(HINTERNET, unsigned long, const wchar_t*, void*, unsigned long*, unsigned long*) { return 0; }
+    inline int WinHttpQueryDataAvailable(HINTERNET, unsigned long*) { return 0; }
+    inline int WinHttpReadData(HINTERNET, void*, unsigned long, unsigned long*) { return 0; }
+    inline int WinHttpCloseHandle(HINTERNET) { return 0; }
+    inline int WinHttpCrackUrl(const wchar_t*, unsigned long, unsigned long, URL_COMPONENTS*) { return 0; }
+
+    // File dialog stubs
+    struct OPENFILENAMEW { unsigned long lStructSize; void* hwndOwner; void* hInstance; const wchar_t* lpstrFilter; wchar_t* lpstrCustomFilter; unsigned long nMaxCustFilter; unsigned long nFilterIndex; wchar_t* lpstrFile; unsigned long nMaxFile; wchar_t* lpstrFileTitle; unsigned long nMaxFileTitle; const wchar_t* lpstrInitialDir; const wchar_t* lpstrTitle; unsigned long Flags; unsigned short nFileOffset, nFileExtension; const wchar_t* lpstrDefExt; LPARAM lCustData; void* lpfnHook; const wchar_t* lpTemplateName; void* pvReserved; unsigned long dwReserved; unsigned long FlagsEx; };
+    #define OFN_PATHMUSTEXIST 0x800
+    #define OFN_FILEMUSTEXIST 0x1000
+    #define OFN_NOCHANGEDIR 8
+    #define FNERR_INVALIDFILENAME 0x3002
+    inline int GetOpenFileNameW(OPENFILENAMEW*) { return 0; }
+    inline unsigned long CommDlgExtendedError() { return 0; }
+    #define ZeroMemory(p,s) memset(p, 0, s)
+
+    // Shell stubs
+    #define SW_SHOWNORMAL 1
+    using HINSTANCE = void*;
+    inline HINSTANCE ShellExecuteW(void*, const wchar_t*, const wchar_t*, const wchar_t*, const wchar_t*, int) { return nullptr; }
+    // GUID stub
+    struct GUID { unsigned long Data1; unsigned short Data2, Data3; unsigned char Data4[8]; };
+    static const GUID FOLDERID_Downloads = {0,0,0,{0,0,0,0,0,0,0,0}};
+    #define KF_FLAG_DEFAULT 0
+    inline int SHGetKnownFolderPath(const void*, unsigned long, void*, wchar_t**) { return 1; }
+    inline void CoTaskMemFree(void*) {}
+
+    // String stubs
+    inline int sprintf_s(char* buf, size_t, const char*, ...) { buf[0] = '\0'; return 0; }
+    inline int strncpy_s(char* dst, size_t size, const char* src, size_t n) { if (dst && src) { strncpy(dst, src, std::min(size - 1, n)); dst[std::min(size - 1, n)] = '\0'; } return 0; }
+    inline int wcsncpy_s(wchar_t* dst, size_t size, const wchar_t* src, size_t n) { if (dst && src) { wcsncpy(dst, src, std::min(size - 1, n)); dst[std::min(size - 1, n)] = L'\0'; } return 0; }
+    inline int _wcsicmp(const wchar_t* a, const wchar_t* b) { return wcscasecmp(a, b); }
+    #define _TRUNCATE ((size_t)-1)
+    using INT_PTR = intptr_t;
+    using DWORD_PTR = uintptr_t;
+
+    // Cursor stubs
+    inline void SetCursor(void*) {}
+    inline int ClipCursor(const RECT*) { return 1; }
+    inline int GetClipCursor(RECT*) { return 1; }
+    #define IDC_ARROW_MAKEINTRESOURCE reinterpret_cast<wchar_t*>(32512)
+
+    // Keyboard layout stubs
+    using HKL = void*;
+    inline HKL GetKeyboardLayout(unsigned long) { return nullptr; }
+    inline int ToUnicodeEx(unsigned int, unsigned int, const unsigned char*, wchar_t*, int, unsigned int, HKL) { return 0; }
+    #define LANG_ENGLISH 0x09
+    #define LOWORD(l) ((unsigned short)(l & 0xFFFF))
+    inline unsigned int MapVirtualKeyEx(unsigned int, unsigned int, HKL) { return 0; }
+
+    // XBUTTON/WHEEL macros
+    #define GET_XBUTTON_WPARAM(w) ((unsigned short)(((w) >> 16) & 0xFFFF))
+    inline constexpr unsigned short XBUTTON1 = 1;
+    inline constexpr unsigned short XBUTTON2 = 2;
+    #define ERROR_SHARING_VIOLATION 32L
+
+    // WinHTTP extra stubs
+    #define WINHTTP_NO_OUTPUT_BUFFER 0
+    #define WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY 4
+    #define WINHTTP_NO_PROXY_NAME nullptr
+    #define WINHTTP_NO_PROXY_BYPASS nullptr
+    #define WINHTTP_NO_REFERER nullptr
+    #define WINHTTP_DEFAULT_ACCEPT_TYPES nullptr
+    // DWORD* overloads for WinHTTP
+    inline int WinHttpQueryHeaders(HINTERNET, unsigned long, const wchar_t*, void*, DWORD*, DWORD*) { return 0; }
+    inline int WinHttpQueryDataAvailable(HINTERNET, DWORD*) { return 0; }
+    inline int WinHttpReadData(HINTERNET, void*, unsigned long, DWORD*) { return 0; }
+
+    // Resource stubs (needed by gui_runtime.cpp)
+    inline int GetModuleHandleExW(unsigned long, const wchar_t*, HMODULE*) { return 0; }
+    inline void* FindResourceW(HMODULE, const wchar_t*, const wchar_t*) { return nullptr; }
+    inline void* LoadResource(HMODULE, void*) { return nullptr; }
+    inline unsigned long SizeofResource(HMODULE, void*) { return 0; }
+    inline const void* LockResource(void*) { return nullptr; }
+
+    // ImGui API compatibility (v1.92.6)
+    // SetWindowFontScale → use ImGui::GetIO().FontGlobalScale
+    // GetWindowContentRegionMax → use ImGui::GetWindowContentRegionMax() (function, not value)
+    // ImFontAtlas::Build → ImFontAtlas::Builder
+    #define GET_WHEEL_DELTA_WPARAM(w) ((short)(((w) >> 16) & 0xFFFF))
+    #define GET_KEYSTATE_WPARAM(w) ((unsigned short)(w & 0xFFFF))
+    #define GET_KEYSTATE_LPARAM(l) ((unsigned short)(l & 0xFFFF))
+
+    // Additional window stubs
+    #define WM_MOUSEACTIVATE 0x21
+    #define WM_NCHITTEST 0x84
+    #define WM_SETCURSOR 0x20
+    #define WM_IME_SETCONTEXT 0x281
+    #define WM_IME_NOTIFY 0x282
+    #define HTCLIENT 1
+    #define SWP_NOSENDCHANGING 0x400
+
     // INPUT stub
     struct INPUT { unsigned long type; struct { unsigned short wVk, wScan; unsigned long dwFlags; unsigned long time; ULONG_PTR dwExtraInfo; } ki; };
     #define INPUT_KEYBOARD 1
