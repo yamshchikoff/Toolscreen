@@ -89,7 +89,7 @@ std::atomic<HCURSOR> g_specialCursorHandle{nullptr};
 std::atomic<bool> g_graphicsHookDetected{false};
 std::atomic<HMODULE> g_graphicsHookModule{nullptr};
 std::chrono::steady_clock::time_point g_lastGraphicsHookCheck;
-const int GRAPHICS_HOOK_CHECK_INTERVAL_MS = 5000;
+extern const int GRAPHICS_HOOK_CHECK_INTERVAL_MS = 5000;
 
 // Hotkeys (declared extern in utils.h / gui.h — defined in gui.cpp on Windows)
 std::mutex g_hotkeyMainKeysMutex;
@@ -179,6 +179,10 @@ std::atomic<GameStateSourceKind> g_activeGameStateSource{GameStateSourceKind::No
 ViewportTransitionSnapshot g_viewportTransitionSnapshots[2];
 std::atomic<int> g_viewportTransitionSnapshotIndex{0};
 
+// Hotkey timestamps (extern unordered_map in gui.h)
+std::unordered_map<std::string, std::chrono::steady_clock::time_point> g_hotkeyTimestamps;
+
+
 // ImGui Win32 stubs (called from gui_runtime.cpp on both platforms)
 void ImGui_ImplWin32_Init(void*) {}
 void ImGui_ImplWin32_NewFrame() {}
@@ -258,9 +262,18 @@ void* g_owglSwapBuffersThirdParty = nullptr;
 
 // Additional Windows-only stubs
 bool ClipCursorDirect(const PlatformRect* r) { return X11Cursor::ClipCursor(r), true; }
+bool ClipCursorDirect(const RECT* r) { PlatformRect pr{r->left, r->top, r->right, r->bottom}; return X11Cursor::ClipCursor(&pr), true; }
 bool ApplyConfineCursorToGameWindow() { return false; }
 void ApplyDeferredGuiCursorModeAfterClose() {}
 void FinalizeGuiCursorStateAfterClose() {}
+
+// Windows WGL function pointers (not used on Linux — replaced by GLX interposition)
+void (*oglViewport)(GLint, GLint, GLsizei, GLsizei) = nullptr;
+void* owglSwapBuffers = nullptr;
+
+// Windows WGL third-party hook stubs (not used on Linux)
+int hkwglSwapBuffers(void*) { return 0; }
+int hkwglSwapBuffers_ThirdParty(void*) { return 0; }
 
 namespace {
 
@@ -313,6 +326,10 @@ void StopThreads() {
 }
 
 } // namespace
+
+// stb_image implementation (defined in dllmain.cpp on Windows)
+#define STB_IMAGE_IMPLEMENTATION
+#include "third_party/stb_image.h"
 
 // ---- Module entry/exit points ----
 
