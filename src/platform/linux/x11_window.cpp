@@ -7,7 +7,6 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/Xatom.h>
-#include <X11/extensions/Xrandr.h>
 #include <cstdio>
 #include <cstring>
 #include <mutex>
@@ -24,7 +23,6 @@ Window g_gameWindow = 0;
 Atom g_netWmState = None;
 Atom g_netWmStateFullscreen = None;
 Atom g_netWmStateHidden = None;
-Atom g_netFrameExtents = None;
 
 void InitAtoms() {
     Display* dpy = X11Display::Get();
@@ -33,7 +31,6 @@ void InitAtoms() {
     g_netWmState = XInternAtom(dpy, "_NET_WM_STATE", False);
     g_netWmStateFullscreen = XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", False);
     g_netWmStateHidden = XInternAtom(dpy, "_NET_WM_STATE_HIDDEN", False);
-    g_netFrameExtents = XInternAtom(dpy, "_NET_FRAME_EXTENTS", False);
 }
 
 } // namespace

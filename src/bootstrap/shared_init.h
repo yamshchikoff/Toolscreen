@@ -8,7 +8,6 @@
 
 #include <string>
 #include <atomic>
-#include <memory>
 
 // Forward declarations
 struct Config;

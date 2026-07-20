@@ -7,13 +7,12 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
-#include <X11/extensions/XInput2.h>
-#include <X11/extensions/XI2.h>
 #include <cstdio>
 #include <cstring>
 #include <mutex>
 #include <atomic>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace X11Input {
 
@@ -31,12 +30,32 @@ std::unordered_map<uint32_t, bool> g_keyState;
 // Cursor visibility
 std::atomic<bool> g_cursorVisible{true};
 
-// Map X11 keycode to canonical VK
+// Map X11 keycode to canonical VK, handling AltGr, CapsLock, NumLock, and
+// multiple keyboard groups (e.g., US+Russian layouts).
 uint32_t XKeycodeToVk(Display* dpy, unsigned int keycode, unsigned int state) {
-    KeySym keysym = XkbKeycodeToKeysym(dpy, keycode, 0, state & ShiftMask ? 1 : 0);
+    // Determine the effective keyboard group and shift level from modifier state
+    // Mod5 (ISO_Level3_Shift) → group 1; Shift → level 1 within group
+    int group = (state & Mod5Mask) ? 1 : 0;
+    int level = (state & ShiftMask) ? 1 : 0;
+
+    // Include LockMask so CapsLock affects the keysym correctly
+    unsigned int mods = state & (ShiftMask | LockMask | Mod5Mask);
+
+    KeySym keysym = XkbKeycodeToKeysym(dpy, keycode, group, level);
     if (keysym == NoSymbol) {
         keysym = XkbKeycodeToKeysym(dpy, keycode, 0, 0);
     }
+
+    // Also try without LockMask if the result looks wrong for alpha keys
+    if ((keysym < XK_A || keysym > XK_Z) && (keysym < XK_a || keysym > XK_z)) {
+        KeySym keysymNoLock = XkbKeycodeToKeysym(dpy, keycode, group, level & ~1);
+        if (keysymNoLock != NoSymbol &&
+            ((keysymNoLock >= XK_A && keysymNoLock <= XK_Z) ||
+             (keysymNoLock >= XK_a && keysymNoLock <= XK_z))) {
+            keysym = keysymNoLock;
+        }
+    }
+
     return X11Display::X11KeyToVk(keysym, keycode, state);
 }
 
@@ -226,13 +245,33 @@ void SendKeyUp(uint32_t vkCode) {
 }
 
 void SendChar(uint32_t charCode) {
-    // Send as X11 ClientMessage or use XTest fake key
-    // For now, just send the key event pair for the character
+    if (charCode < 0x20 || charCode > 0x7E) return;
+
+    bool needsShift = false;
     PlatformVk vk = charCode;
-    if (charCode >= 0x20 && charCode <= 0x7E) {
-        vk = charCode;
-        SendKeyDown(vk);
-        SendKeyUp(vk);
+
+    // Uppercase letters: simulate Shift + base key
+    if (charCode >= 'A' && charCode <= 'Z') {
+        needsShift = true;
+        vk = charCode; // VK_A-VK_Z map to the base key
+    }
+
+    // Symbols that require Shift on US layout
+    static const std::unordered_set<char> shiftSymbols = {
+        '!', '@', '#', '$', '%', '^', '&', '*', '(', ')',
+        '_', '+', '{', '}', '|', ':', '"', '<', '>', '?', '~'
+    };
+    if (shiftSymbols.count(static_cast<char>(charCode))) {
+        needsShift = true;
+    }
+
+    if (needsShift) {
+        SendKeyDown(Vk::LSHIFT);
+    }
+    SendKeyDown(vk);
+    SendKeyUp(vk);
+    if (needsShift) {
+        SendKeyUp(Vk::LSHIFT);
     }
 }
 

@@ -5,6 +5,7 @@
 
 #include <cstdio>
 #include <filesystem>
+#include <mutex>
 #include <fstream>
 #include <string>
 
@@ -19,8 +20,6 @@ namespace SharedInit {
 
 namespace {
 
-std::atomic<bool> g_configLoaded{false};
-std::atomic<bool> g_translationsLoaded{false};
 
 // ---- Linux signal handler (replaces Windows SEH) ----
 #ifdef PLATFORM_LINUX
@@ -80,35 +79,30 @@ void InstallLinuxSignalHandlers() {
 } // namespace
 
 bool InitConfig(Config& config, const std::string& toolscreenPath) {
-    if (g_configLoaded.load()) return true;
-
-    std::string configPath = toolscreenPath + "/toolscreen.toml";
-
-    // Try to load existing config
-    if (std::filesystem::exists(configPath)) {
-        // Load from file using our TOML parser
-        // For Linux, convert path to UTF-8 (no wstring needed)
-        std::ifstream file(configPath);
-        if (file.good()) {
-            std::string tomlContent((std::istreambuf_iterator<char>(file)),
-                                     std::istreambuf_iterator<char>());
-            try {
-                toml::table tbl = toml::parse(tomlContent);
-                ConfigFromToml(tbl, config);
-                g_configLoaded.store(true);
-                fprintf(stderr, "[Toolscreen] Config loaded from %s\n", configPath.c_str());
-                return true;
-            } catch (const std::exception& e) {
-                fprintf(stderr, "[Toolscreen] Config parse error: %s\n", e.what());
+    static std::once_flag configInitFlag;
+    bool result = true;
+    std::call_once(configInitFlag, [&]() {
+        std::string configPath = toolscreenPath + "/toolscreen.toml";
+        std::error_code ec;
+        if (std::filesystem::exists(configPath, ec) && !ec) {
+            std::ifstream file(configPath);
+            if (file.good()) {
+                std::string tomlContent((std::istreambuf_iterator<char>(file)),
+                                         std::istreambuf_iterator<char>());
+                try {
+                    toml::table tbl = toml::parse(tomlContent);
+                    ConfigFromToml(tbl, config);
+                    fprintf(stderr, "[Toolscreen] Config loaded from %s\n", configPath.c_str());
+                    return;
+                } catch (const std::exception& e) {
+                    fprintf(stderr, "[Toolscreen] Config parse error: %s\n", e.what());
+                }
             }
         }
-    }
-
-    // Fall back to embedded defaults
-    fprintf(stderr, "[Toolscreen] Using embedded default config\n");
-    LoadEmbeddedDefaultConfig(config);
-    g_configLoaded.store(true);
-    return true;
+        fprintf(stderr, "[Toolscreen] Using embedded default config\n");
+        LoadEmbeddedDefaultConfig(config);
+    });
+    return result;
 }
 
 bool InitTranslations(const Config& config) {

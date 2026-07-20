@@ -7,7 +7,6 @@
 #include <X11/Xutil.h>
 #include <X11/Xatom.h>
 #include <X11/extensions/XShm.h>
-#include <X11/extensions/Xcomposite.h>
 #include <sys/shm.h>
 #include <cstdio>
 #include <cstring>
