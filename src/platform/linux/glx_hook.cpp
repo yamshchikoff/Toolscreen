@@ -458,7 +458,11 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     if (g_imguiInitialized && g_imguiCtx && X11Display::GetGameWindow() != 0) {
         ImGui::SetCurrentContext(g_imguiCtx);
 
-        // Ensure DisplaySize is set (required by ImGui::NewFrame)
+        // Save GL state before ImGui rendering
+        glPushAttrib(GL_ALL_ATTRIB_BITS);
+        glPushClientAttrib(GL_CLIENT_ALL_ATTRIB_BITS);
+
+        // Ensure DisplaySize is set
         ImGuiIO& io = ImGui::GetIO();
         if (io.DisplaySize.x <= 0.0f) {
             io.DisplaySize = ImVec2(1920.0f, 1080.0f);
@@ -466,21 +470,19 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
         }
 
         X11Input::PollEvents();
-
-        // Start the ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplX11_NewFrame();
         ImGui::NewFrame();
 
-        // Toolscreen GUI test window — verifies ImGui + X11 input work.
-        // Full GUI requires wiring RenderMode() from render.cpp
-        // (needs config, mode resolution, GPU resource init).
         static bool showDemo = true;
         ImGui::ShowDemoWindow(&showDemo);
 
-        // Render ImGui draw data
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+        // Restore GL state
+        glPopClientAttrib();
+        glPopAttrib();
     }
 
     // Call the original glXSwapBuffers to present the frame
