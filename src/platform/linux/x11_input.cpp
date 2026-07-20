@@ -29,18 +29,20 @@ std::atomic<bool> g_xtestChecked{false};
 std::atomic<bool> g_xtestAvailable{false};
 
 bool EnsureXTestAvailable() {
-    if (g_xtestChecked.load(std::memory_order_acquire))
-        return g_xtestAvailable.load(std::memory_order_acquire);
-    Display* dpy = X11Display::Get();
-    if (!dpy) return false;
-    int major, minor;
-    bool available = XTestQueryExtension(dpy, &major, &minor, nullptr, nullptr, nullptr);
-    g_xtestAvailable.store(available, std::memory_order_release);
+    // Thread-safe one-shot init (fixes race on g_xtestChecked / g_xtestAvailable)
+    static std::once_flag xtestInitFlag;
+    std::call_once(xtestInitFlag, []() {
+        Display* dpy = X11Display::Get();
+        if (!dpy) { g_xtestAvailable.store(false); return; }
+        int major, minor;
+        bool available = XTestQueryExtension(dpy, &major, &minor, nullptr, nullptr, nullptr);
+        g_xtestAvailable.store(available, std::memory_order_release);
+        if (!available) {
+            fprintf(stderr, "[Toolscreen] XTEST unavailable — synthetic input disabled\n");
+        }
+    });
     g_xtestChecked.store(true, std::memory_order_release);
-    if (!available) {
-        fprintf(stderr, "[Toolscreen] XTEST unavailable — synthetic input disabled\n");
-    }
-    return available;
+    return g_xtestAvailable.load(std::memory_order_acquire);
 }
 
 // Track key state for modifier queries
@@ -281,17 +283,28 @@ void SendChar(uint32_t charCode) {
     unsigned int keycode = XKeysymToKeycode(dpy, keysym);
     if (keycode == 0) return;
 
-    // Determine if Shift is needed by comparing with the unshifted keysym
+    // Determine modifiers needed: check Shift (group 0 level 0 vs level 1)
+    // and AltGr (group 1 level 0 — ISO_Level3_Shift on most layouts)
     KeySym baseKeysym = XkbKeycodeToKeysym(dpy, keycode, 0, 0);
-    bool needsShift = (baseKeysym != keysym);
+    KeySym shiftKeysym = XkbKeycodeToKeysym(dpy, keycode, 0, 1);
+    KeySym altgrKeysym = XkbKeycodeToKeysym(dpy, keycode, 1, 0);
+    bool needsShift = (baseKeysym != keysym && shiftKeysym == keysym);
+    bool needsAltGr = (altgrKeysym == keysym);
 
-    unsigned int shiftKeycode = 0;
+    unsigned int shiftKeycode = 0, altgrKeycode = 0;
     if (needsShift) {
         shiftKeycode = XKeysymToKeycode(dpy, XK_Shift_L);
-        XTestFakeKeyEvent(dpy, shiftKeycode, True, CurrentTime);
+        if (shiftKeycode) XTestFakeKeyEvent(dpy, shiftKeycode, True, CurrentTime);
+    }
+    if (needsAltGr) {
+        altgrKeycode = XKeysymToKeycode(dpy, XK_ISO_Level3_Shift);
+        if (altgrKeycode) XTestFakeKeyEvent(dpy, altgrKeycode, True, CurrentTime);
     }
     XTestFakeKeyEvent(dpy, keycode, True, CurrentTime);
     XTestFakeKeyEvent(dpy, keycode, False, CurrentTime);
+    if (needsAltGr) {
+        XTestFakeKeyEvent(dpy, altgrKeycode, False, CurrentTime);
+    }
     if (needsShift) {
         XTestFakeKeyEvent(dpy, shiftKeycode, False, CurrentTime);
     }

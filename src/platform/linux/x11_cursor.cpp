@@ -137,6 +137,7 @@ void* LoadCursorFromRGBA(const uint8_t* rgba, int width, int height, int hotX, i
     Pixmap pixmap = XCreatePixmap(dpy, X11Display::GetRoot(), width, height,
                                    DefaultDepth(dpy, X11Display::GetScreen()));
     GC gc = XCreateGC(dpy, pixmap, 0, nullptr);
+    if (!gc) { delete[] image->data; image->data = nullptr; XDestroyImage(image); XFreePixmap(dpy, pixmap); return nullptr; }
     XPutImage(dpy, pixmap, gc, image, 0, 0, 0, 0, width, height);
 
     // Build 1-bit mask bitmap in memory (avoids O(w*h) X server round-trips)

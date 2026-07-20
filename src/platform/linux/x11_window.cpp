@@ -168,6 +168,7 @@ bool SetBorderlessFullscreen(Window win, bool borderless) {
     Display* dpy = X11Display::Get();
     if (!dpy || !win) return false;
     InitAtoms();
+    if (g_netWmState == None || g_netWmStateFullscreen == None) return false;
 
     if (borderless) {
         // Set _NET_WM_STATE_FULLSCREEN
