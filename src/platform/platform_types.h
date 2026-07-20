@@ -215,7 +215,10 @@ namespace Vk {
 
     // Linux-specific includes needed by polyfills below
     #include <unistd.h>
+    #include <sys/syscall.h>
     #include <cstring>
+    #include <fstream>
+    #include <climits>
     #include <codecvt>
     #include <locale>
 
@@ -230,7 +233,9 @@ namespace Vk {
     using ULONG_PTR = uintptr_t;
     using WORD = uint16_t;
     using SHORT = int16_t;
+    using USHORT = uint16_t;
     using BOOL = int;
+    using LONGLONG = int64_t;
     using ULONGLONG = uint64_t;
     #define FALSE 0
     #define TRUE 1
@@ -386,6 +391,88 @@ namespace Vk {
     using LPCTSTR = const wchar_t*;
     using LPTSTR = wchar_t*;
     using LPWSTR = wchar_t*;
+    using PWSTR = wchar_t*;
+    using LPSTR = char*;
+
+    // Additional Win32 types
+    union LARGE_INTEGER { int64_t QuadPart; struct { int32_t LowPart; int32_t HighPart; } u; };
+    struct IMAGE_CURSOR { int dummy; };  // Stub — Xcursor handles cursors on Linux
+    #define ERROR_ACCESS_DENIED 5L
+    #define ERROR_LOCK_VIOLATION 33L
+    #define ERROR_FILE_NOT_FOUND 2L
+    #define FOLDERID_Profile {0x00000000,0x0000,0x0000,{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}}  // dummy GUID
+
+    // QueryPerformanceCounter polyfill
+    inline int QueryPerformanceCounter(LARGE_INTEGER* lpPerformanceCount) {
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        lpPerformanceCount->QuadPart = static_cast<int64_t>(ts.tv_sec) * 1000000000LL + ts.tv_nsec;
+        return 1;
+    }
+    inline int QueryPerformanceFrequency(LARGE_INTEGER* lpFrequency) {
+        lpFrequency->QuadPart = 1000000000LL;  // 1 GHz (nanoseconds)
+        return 1;
+    }
+
+    // GetCommandLineW polyfill
+    inline LPWSTR GetCommandLineW() {
+        static wchar_t buf[4096];
+        std::ifstream cmdline("/proc/self/cmdline");
+        if (cmdline) {
+            std::string s;
+            char c;
+            while (cmdline.get(c)) s += (c == '\0' ? ' ' : c);
+            if (!s.empty() && s.back() == ' ') s.pop_back();
+            mbstowcs(buf, s.c_str(), 4095);
+        } else {
+            buf[0] = L'\0';
+        }
+        return buf;
+    }
+
+    // MAKEINTRESOURCEW stub (not functional on Linux — resources are files)
+    inline LPWSTR MAKEINTRESOURCEW(int i) { return reinterpret_cast<LPWSTR>(static_cast<uintptr_t>(i)); }
+
+    // GetTickCount64 polyfill
+    inline uint64_t GetTickCount64() {
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        return static_cast<uint64_t>(ts.tv_sec) * 1000ULL + static_cast<uint64_t>(ts.tv_nsec) / 1000000ULL;
+    }
+
+    // _wgetenv_s polyfill
+    inline int _wgetenv_s(size_t* requiredSize, wchar_t* buffer, size_t bufferSize, const wchar_t* name) {
+        char nameBuf[256];
+        wcstombs(nameBuf, name, sizeof(nameBuf) - 1);
+        const char* val = ::getenv(nameBuf);
+        if (!val) { if (requiredSize) *requiredSize = 0; return 1; }
+        size_t len = strlen(val);
+        if (requiredSize) *requiredSize = len;
+        if (buffer && bufferSize > len) { mbstowcs(buffer, val, bufferSize); return 0; }
+        return 1;
+    }
+
+    // DeleteFileW polyfill
+    inline int DeleteFileW(const wchar_t* path) {
+        char pathBuf[4096];
+        wcstombs(pathBuf, path, sizeof(pathBuf) - 1);
+        return ::unlink(pathBuf) == 0 ? 1 : 0;
+    }
+
+    // Win32 file API stubs
+    inline int GetFileAttributesW(const wchar_t*) { return -1; }  // INVALID_FILE_ATTRIBUTES
+    #define INVALID_FILE_ATTRIBUTES ((int)-1)
+    #define FILE_ATTRIBUTE_DIRECTORY 0x10
+
+    // Additional stubs
+    struct IMAGE_ICON { int dummy; };
+    inline int DestroyIcon(void*) { return 1; }
+    inline void TerminateProcess(void*, unsigned int) { ::_exit(1); }
+    inline unsigned long GetLastError() { return static_cast<unsigned long>(errno); }
+    inline unsigned long GetCurrentThreadId() { return static_cast<unsigned long>(syscall(SYS_gettid)); }
+    inline int GetSystemMetrics(int) { return 0; }
+    #define SM_CXSCREEN 0
+    #define SM_CYSCREEN 1
 
     // GetCurrentProcessId polyfill
     inline unsigned long GetCurrentProcessId() { return static_cast<unsigned long>(::getpid()); }

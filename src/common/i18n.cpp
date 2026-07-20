@@ -16,6 +16,7 @@ namespace {
 
 constexpr const char* kPrimaryLocale = "en";
 
+#ifdef _WIN32
 HMODULE GetCurrentModuleHandle() {
     HMODULE hModule = nullptr;
     GetModuleHandleExW(
@@ -106,12 +107,29 @@ void LoadLangs() {
     }
 }
 
+#else
+// Linux: load translations from filesystem (lang/ directory)
+void LoadLangs() {
+    try {
+        std::ifstream langsFile("lang/langs.json");
+        if (langsFile) {
+            std::string content((std::istreambuf_iterator<char>(langsFile)),
+                                std::istreambuf_iterator<char>());
+            g_langsJson = nlohmann::json::parse(content);
+        }
+    } catch (const std::exception& e) {
+        Log(std::string("Failed to load language list: ") + e.what());
+    }
+}
+#endif
+
 const nlohmann::json& GetLangs() {
     return g_langsJson;
 }
 
 bool LoadTranslation(const std::string& lang) {
     try {
+#ifdef _WIN32
         nlohmann::json loadedTranslationJson = LoadTranslationResource(kPrimaryLocale);
         if (lang != kPrimaryLocale) {
             nlohmann::json localeTranslationJson = LoadTranslationResource(lang);
@@ -119,6 +137,24 @@ bool LoadTranslation(const std::string& lang) {
                 loadedTranslationJson[key] = std::move(value);
             }
         }
+#else
+        // Linux: load from lang/ directory
+        auto loadJson = [](const std::string& locale) {
+            std::string path = "lang/" + locale + ".json";
+            std::ifstream file(path);
+            if (!file) throw std::runtime_error("Cannot open " + path);
+            std::string content((std::istreambuf_iterator<char>(file)),
+                                std::istreambuf_iterator<char>());
+            return nlohmann::json::parse(content);
+        };
+        nlohmann::json loadedTranslationJson = loadJson(kPrimaryLocale);
+        if (lang != kPrimaryLocale) {
+            nlohmann::json localeTranslationJson = loadJson(lang);
+            for (auto& [key, value] : localeTranslationJson.items()) {
+                loadedTranslationJson[key] = std::move(value);
+            }
+        }
+#endif
 
         g_translationJson = std::move(loadedTranslationJson);
         g_translationCache.clear();

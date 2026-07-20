@@ -4,9 +4,12 @@
 #include "render/render.h"
 #include "third_party/stb_image.h"
 
+#ifdef _WIN32
 #include <WebView2.h>
 #include <WebView2EnvironmentOptions.h>
 #include <wrl.h>
+#endif
+#ifdef _WIN32
 #include <array>
 #include <algorithm>
 #include <chrono>
@@ -1615,3 +1618,16 @@ bool PrepareBrowserOverlayTexture(const BrowserOverlayConfig& config, BrowserOve
     outFrame.textureHeight = entry->glTextureHeight;
     return outFrame.textureId != 0 && outFrame.textureWidth > 0 && outFrame.textureHeight > 0;
 }
+
+#else
+// Linux stubs — browser overlay is Windows-only (WebView2)
+void StartBrowserOverlayThread() {}
+void StopBrowserOverlayThread() {}
+void CleanupBrowserOverlayCache() {}
+void RemoveBrowserOverlayFromCache(const std::string&) {}
+void RequestBrowserOverlayRefresh(const std::string&) {}
+const BrowserOverlayConfig* FindBrowserOverlayConfig(const std::string&) { return nullptr; }
+const BrowserOverlayConfig* FindBrowserOverlayConfigIn(const std::string&, const Config&) { return nullptr; }
+bool StageBrowserOverlayTestFrame(const BrowserOverlayConfig&, const std::vector<unsigned char>&, int, int) { return false; }
+bool PrepareBrowserOverlayTexture(const BrowserOverlayConfig&, BrowserOverlayTextureFrame&) { return false; }
+#endif

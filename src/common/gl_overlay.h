@@ -6,6 +6,8 @@
 #include <GL/glew.h>
 #ifdef _WIN32
 #include <windows.h>
+#elif defined(PLATFORM_LINUX)
+#include "platform/platform_types.h"
 #endif
 
 #include "common/utils.h"
@@ -93,7 +95,7 @@ private:
 class QuadBatch {
 public:
     bool Ensure() {
-        const DWORD tid = GetCurrentThreadId();
+        const DWORD tid = static_cast<DWORD>(Platform::GetCurrentThreadId());
         if (threadId_ != tid) {
             program_ = 0;
             vao_ = 0;

@@ -3,10 +3,12 @@
 #include "common/profiler.h"
 #include "render/render.h"
 #include "common/utils.h"
+#ifdef _WIN32
 #include <GL/wglew.h>
+#include <dwmapi.h>
+#endif
 #include <algorithm>
 #include <cmath>
-#include <dwmapi.h>
 #include <iostream>
 #include <memory>
 #include <mutex>

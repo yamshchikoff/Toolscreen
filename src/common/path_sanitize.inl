@@ -1,3 +1,5 @@
+#ifdef _WIN32
+
 namespace {
 
 wchar_t NormalizeSlash(wchar_t ch) { return ch == L'/' ? L'\\' : ch; }
@@ -91,3 +93,8 @@ std::string FileNameForDisplay(const std::string& path) {
     if (pos == std::string::npos) { return path; }
     return path.substr(pos + 1);
 }
+
+#else
+// Linux stubs — path sanitisation is Windows-specific (drive letters, USERPROFILE)
+static inline std::wstring SanitizePathForDisplay(const std::wstring& path) { return path; }
+#endif
