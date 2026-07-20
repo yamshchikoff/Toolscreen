@@ -463,9 +463,9 @@ void LoadTheme() {
     try {
         toml::table tbl;
 #if TOML_EXCEPTIONS
-        tbl = toml::parse(testFile, themePath);
+        tbl = toml::parse(testFile, WideToUtf8(themePath));
 #else
-        toml::parse_result result = toml::parse(testFile, themePath);
+        toml::parse_result result = toml::parse(testFile, WideToUtf8(themePath));
         if (!result) {
             const auto& err = result.error();
             Log("ERROR: Failed to parse theme.toml: " + std::string(err.description()));

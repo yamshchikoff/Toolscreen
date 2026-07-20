@@ -166,7 +166,7 @@ void RegisterBindingInputEvent(UINT uMsg, WPARAM wParam, LPARAM lParam) {
         break;
     case WM_XBUTTONDOWN: {
         WORD xButton = GET_XBUTTON_WPARAM(wParam);
-        vk = (xButton == XBUTTON1) ? VK_XBUTTON1 : VK_XBUTTON2;
+        vk = (xButton == 1) ? VK_XBUTTON1 : VK_XBUTTON2;
         isMouseButton = true;
         break;
     }

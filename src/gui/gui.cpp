@@ -3006,7 +3006,7 @@ void RenderSettingsGUI() {
             float iconSize = ImGui::GetFrameHeight();
             float margin = ImGui::GetStyle().ItemSpacing.x;
             const float topBarY = 30.0f * scaleFactor;
-            const float screenshotButtonX = ImGui::GetWindowContentRegionMax().x - buttonWidth;
+            const float screenshotButtonX = ImGui::GetContentRegionAvail().x - buttonWidth;
             const float discordButtonX = screenshotButtonX - margin - iconSize;
             const float languageButtonX = discordButtonX - margin - iconSize;
             const float profileButtonX = languageButtonX - margin - iconSize;

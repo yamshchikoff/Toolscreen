@@ -1,10 +1,15 @@
 #include "hook_chain.h"
 
+#ifdef _WIN32
 #include "MinHook.h"
+#include <Psapi.h>
+#endif
 #include "common/utils.h"
 
+#ifdef _WIN32
 #include <Psapi.h>
 #include <winver.h>
+#endif
 
 #include <atomic>
 #include <cstdint>

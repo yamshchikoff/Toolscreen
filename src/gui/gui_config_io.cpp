@@ -539,9 +539,9 @@ void LoadConfig() {
 
         toml::table tbl;
 #if TOML_EXCEPTIONS
-        tbl = toml::parse(in, configPath);
+        tbl = toml::parse(in, WideToUtf8(configPath));
 #else
-        toml::parse_result result = toml::parse(in, configPath);
+        toml::parse_result result = toml::parse(in, WideToUtf8(configPath));
         if (!result) {
             const auto& err = result.error();
             throw std::runtime_error(std::string(err.description()));

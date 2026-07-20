@@ -216,6 +216,7 @@ namespace Vk {
     // Linux-specific includes needed by polyfills below
     #include <unistd.h>
     #include <sys/syscall.h>
+    #include <cstdarg>
     #include <cstring>
     #include <fstream>
     #include <chrono>
@@ -417,6 +418,15 @@ namespace Vk {
     using LPWSTR = wchar_t*;
     using PWSTR = wchar_t*;
     using LPSTR = char*;
+    using LPCSTR = const char*;
+    using UINT_PTR = uintptr_t;
+    using HHOOK = void*;
+
+    // Memory/hook stubs
+    struct MEMORY_BASIC_INFORMATION { void* BaseAddress; void* AllocationBase; unsigned long AllocationProtect; size_t RegionSize; unsigned long State; unsigned long Protect; unsigned long Type; };
+    inline size_t VirtualQuery(const void*, MEMORY_BASIC_INFORMATION*, size_t) { return 0; }
+    inline int FreeLibrary(void*) { return 0; }
+    inline int GetModuleHandleExA(unsigned long, LPCSTR, HMODULE*) { return 0; }
 
     // Additional Win32 types
     union LARGE_INTEGER { int64_t QuadPart; int32_t LowPart; int32_t HighPart; struct { int32_t LowPart; int32_t HighPart; } u; };
@@ -764,6 +774,20 @@ namespace Vk {
     inline int GetFileSizeEx(void*, LARGE_INTEGER*) { return 0; }
     inline int UnmapViewOfFile(void*) { return 1; }
     #define PAGE_READWRITE 4
+    #define PAGE_READONLY 2
+    #define PAGE_EXECUTE 0x10
+    #define PAGE_EXECUTE_READ 0x20
+    #define PAGE_EXECUTE_READWRITE 0x40
+    #define PAGE_EXECUTE_WRITECOPY 0x80
+    #define PAGE_WRITECOPY 8
+    #define MEM_COMMIT 0x1000
+    #define MEM_RESERVE 0x2000
+    #define WM_ACTIVATEAPP 0x1C
+    #define WM_MOVE 3
+    inline int ShowCursor(int) { return 0; }
+    inline LRESULT CallWindowProc(WNDPROC, HWND, UINT, WPARAM, LPARAM) { return 0; }
+    inline int GetFileVersionInfoSizeW(const wchar_t*, unsigned long*) { return 0; }
+    inline int GetFileVersionInfoW(const wchar_t*, unsigned long, unsigned long, void*) { return 0; }
     inline void* CreateFileMappingW(void*, void*, unsigned long, unsigned long, unsigned long, const wchar_t*) { return nullptr; }
     #define FILE_MAP_ALL_ACCESS 0xF001F
     inline int GetCursorPos(POINT* p) { if (p) { p->x = p->y = 0; } return 1; }
@@ -831,9 +855,13 @@ namespace Vk {
     #define WM_MOUSEWHEEL 0x20A
     #define WM_MOUSEHWHEEL 0x20E
     #define WM_KEYDOWN 0x100
+    #define WM_KEYUP 0x101
     #define WM_CHAR 0x102
     #define WM_SYSKEYDOWN 0x104
     #define WM_SYSKEYUP 0x105
+    #define WHEEL_DELTA 120
+    #define HIWORD(l) ((unsigned short)(((l) >> 16) & 0xFFFF))
+    #define KF_EXTENDED 0x100
     #define WM_LBUTTONDOWN 0x201
     #define WM_LBUTTONUP 0x202
     #define WM_RBUTTONDOWN 0x204
@@ -905,11 +933,12 @@ namespace Vk {
     struct GUID { unsigned long Data1; unsigned short Data2, Data3; unsigned char Data4[8]; };
     static const GUID FOLDERID_Downloads = {0,0,0,{0,0,0,0,0,0,0,0}};
     #define KF_FLAG_DEFAULT 0
-    inline int SHGetKnownFolderPath(const void*, unsigned long, void*, wchar_t**) { return 1; }
+    inline int SHGetKnownFolderPath(const GUID&, unsigned long, void*, wchar_t**) { return 1; }
     inline void CoTaskMemFree(void*) {}
 
     // String stubs
-    inline int sprintf_s(char* buf, size_t, const char*, ...) { buf[0] = '\0'; return 0; }
+    inline int sprintf_s(char* buf, const char* fmt, ...) { va_list va; va_start(va, fmt); vsprintf(buf, fmt, va); va_end(va); return 0; }
+    // strncpy_s — 4-arg pointer version
     inline int strncpy_s(char* dst, size_t size, const char* src, size_t n) { if (dst && src) { strncpy(dst, src, std::min(size - 1, n)); dst[std::min(size - 1, n)] = '\0'; } return 0; }
     inline int wcsncpy_s(wchar_t* dst, size_t size, const wchar_t* src, size_t n) { if (dst && src) { wcsncpy(dst, src, std::min(size - 1, n)); dst[std::min(size - 1, n)] = L'\0'; } return 0; }
     inline int _wcsicmp(const wchar_t* a, const wchar_t* b) { return wcscasecmp(a, b); }
@@ -933,7 +962,6 @@ namespace Vk {
 
     // XBUTTON/WHEEL macros
     #define GET_XBUTTON_WPARAM(w) ((unsigned short)(((w) >> 16) & 0xFFFF))
-    // XBUTTON1/XBUTTON2 — Windows mouse X button indices
     #define ERROR_SHARING_VIOLATION 32L
 
     // WinHTTP extra stubs
@@ -943,6 +971,8 @@ namespace Vk {
     #define WINHTTP_NO_PROXY_BYPASS nullptr
     #define WINHTTP_NO_REFERER nullptr
     #define WINHTTP_DEFAULT_ACCEPT_TYPES nullptr
+    #define WINHTTP_NO_ADDITIONAL_HEADERS nullptr
+    #define WINHTTP_NO_REQUEST_DATA nullptr
     // DWORD* overloads for WinHTTP
     inline int WinHttpQueryHeaders(HINTERNET, unsigned long, const wchar_t*, void*, DWORD*, DWORD*) { return 0; }
     inline int WinHttpQueryDataAvailable(HINTERNET, DWORD*) { return 0; }

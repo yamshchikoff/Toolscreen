@@ -326,7 +326,7 @@ if (BeginSelectableSettingsTopTabItem(trc("tabs.modes"))) {
 
                 if (hasPreviewInsertLine) {
                     const ImVec2 lineStart(ImGui::GetWindowPos().x + style.WindowPadding.x, previewInsertLineY);
-                    const ImVec2 lineEnd(ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x - style.WindowPadding.x, previewInsertLineY);
+                    const ImVec2 lineEnd(ImGui::GetWindowPos().x + ImGui::GetContentRegionAvail().x - style.WindowPadding.x, previewInsertLineY);
                     const ImU32 lineColor = ImGui::ColorConvertFloat4ToU32(ImVec4(previewInsertTint.x, previewInsertTint.y, previewInsertTint.z, 1.00f));
                     ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(lineStart.x, previewInsertLineY - 4.0f),
                                                               ImVec2(lineStart.x + 10.0f, previewInsertLineY + 4.0f), lineColor, 3.0f);
@@ -436,7 +436,7 @@ if (BeginSelectableSettingsTopTabItem(trc("tabs.modes"))) {
             ImGui::PushID((int)i);
 
             bool node_open = ImGui::TreeNodeEx("##mode_node", ImGuiTreeNodeFlags_SpanAvailWidth, "%s", mode.id.c_str());
-            ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - ImGui::GetFrameHeight());
+            ImGui::SameLine(ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight());
 
             ImGui::Dummy(ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()));
 
@@ -642,7 +642,7 @@ if (BeginSelectableSettingsTopTabItem(trc("tabs.modes"))) {
             ImGui::PushID((int)i + 10000);
 
             bool node_open = ImGui::TreeNodeEx("##mode_node", ImGuiTreeNodeFlags_SpanAvailWidth, "%s", mode.id.c_str());
-            ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - ImGui::GetFrameHeight());
+            ImGui::SameLine(ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight());
 
             ImGui::Dummy(ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()));
 
@@ -1306,7 +1306,7 @@ if (BeginSelectableSettingsTopTabItem(trc("tabs.modes"))) {
             ImGui::PushID((int)i + 15000);
 
             bool node_open = ImGui::TreeNodeEx("##mode_node", ImGuiTreeNodeFlags_SpanAvailWidth, "%s", mode.id.c_str());
-            ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - ImGui::GetFrameHeight());
+            ImGui::SameLine(ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight());
 
             ImGui::Dummy(ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()));
 
@@ -1591,7 +1591,7 @@ if (BeginSelectableSettingsTopTabItem(trc("tabs.modes"))) {
             ImGui::PushID((int)i + 20000);
 
             bool node_open = ImGui::TreeNodeEx("##mode_node", ImGuiTreeNodeFlags_SpanAvailWidth, "%s", mode.id.c_str());
-            ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - ImGui::GetFrameHeight());
+            ImGui::SameLine(ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight());
             ImGui::Dummy(ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()));
 
             if (node_open) {
@@ -1912,7 +1912,7 @@ if (BeginSelectableSettingsTopTabItem(trc("tabs.modes"))) {
             ImGui::PushID((int)i + 30000);
 
             bool node_open = ImGui::TreeNodeEx("##mode_node", ImGuiTreeNodeFlags_SpanAvailWidth, "%s", mode.id.c_str());
-            ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - ImGui::GetFrameHeight());
+            ImGui::SameLine(ImGui::GetContentRegionAvail().x - ImGui::GetFrameHeight());
             ImGui::Dummy(ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()));
 
             if (node_open) {

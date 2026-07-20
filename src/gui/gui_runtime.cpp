@@ -106,7 +106,8 @@ bool IsStableGuiFontPath(const std::string& path, float size) {
     ImFontAtlas testAtlas;
     ImFont* font = testAtlas.AddFontFromFileTTF(resolvedPath.c_str(), size);
     if (!font) return false;
-    unsigned char* pixels; int w, h; testAtlas.GetTexDataAsRGBA32(&pixels, &w, &h); return pixels != nullptr;
+    // ImGui v1.92.6: Build/GetTexData are automatic with RendererHasTextures
+    return font != nullptr;
 }
 
 const ImWchar* GetGlyphRangesOrDefault(ImFontAtlas* atlas, const std::vector<ImWchar>& glyphRanges) {

@@ -2771,7 +2771,7 @@ if (BeginSelectableSettingsTopTabItem(trc("tabs.inputs"))) {
                     if (ImGui::BeginPopup(trc("inputs.rebind_config"))) {
                         // Also block global ESC-to-close-GUI while editing inside this popup.
                         MarkRebindBindingActive();
-                        ImGui::GetIO().FontGlobalScale = popupUiScale;
+                        ImGui::GetStyle().FontScaleMain = popupUiScale;
                         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f * popupUiScale, 4.0f * popupUiScale));
                         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(7.0f * popupUiScale, 6.0f * popupUiScale));
                         ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ImVec2(4.0f * popupUiScale, 3.0f * popupUiScale));
@@ -3335,7 +3335,7 @@ if (BeginSelectableSettingsTopTabItem(trc("tabs.inputs"))) {
 
                         if (ImGui::BeginPopupModal(trc("inputs.custom_unicode"), NULL, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) {
                             MarkRebindBindingActive();
-                            ImGui::GetIO().FontGlobalScale = popupUiScale;
+                            ImGui::GetStyle().FontScaleMain = popupUiScale;
                             if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
                                 s_layoutEscapeRequiresRelease = true;
                                 layoutEscapeConsumedThisFrame = true;
@@ -4141,7 +4141,7 @@ if (BeginSelectableSettingsTopTabItem(trc("tabs.inputs"))) {
 
                         if (ImGui::BeginPopup(trc("inputs.custom_key_input_picker"))) {
                                 MarkRebindBindingActive();
-                                ImGui::GetIO().FontGlobalScale = popupUiScale;
+                                ImGui::GetStyle().FontScaleMain = popupUiScale;
                                 if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
                                     s_layoutEscapeRequiresRelease = true;
                                     layoutEscapeConsumedThisFrame = true;
@@ -4230,7 +4230,7 @@ if (BeginSelectableSettingsTopTabItem(trc("tabs.inputs"))) {
 
                         if (ImGui::BeginPopup(trc("inputs.triggers_custom"))) {
                                 MarkRebindBindingActive();
-                                ImGui::GetIO().FontGlobalScale = popupUiScale;
+                                ImGui::GetStyle().FontScaleMain = popupUiScale;
                                 if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
                                     s_layoutEscapeRequiresRelease = true;
                                     layoutEscapeConsumedThisFrame = true;

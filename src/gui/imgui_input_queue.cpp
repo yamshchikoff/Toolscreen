@@ -124,7 +124,7 @@ static inline int MouseButtonFromMsg(UINT msg, WPARAM wParam) {
     case WM_XBUTTONUP:
     case WM_XBUTTONDBLCLK: {
         WORD xbtn = GET_XBUTTON_WPARAM(wParam);
-        return (xbtn == XBUTTON1) ? 3 : 4;
+        return (xbtn == 1) ? 3 : 4;
     }
     default:
         return -1;

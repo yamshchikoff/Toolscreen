@@ -3,6 +3,8 @@
 #ifdef PLATFORM_LINUX
 
 #include "imgui.h"
+// imgui.h #undefs X11 Status macro — restore as typedef for X11 headers below
+typedef int Status;
 #include "platform/linux/x11_display.h"
 #include <X11/Xlib.h>
 #include <X11/keysym.h>
@@ -172,8 +174,9 @@ void ImGui_ImplX11_NewFrame() {
 
     // Update time
     double now = GetTimeSinceStart();
-    io.DeltaTime = static_cast<float>(now - io.Time);
-    io.Time = now;
+    static double s_lastTime = now;
+    io.DeltaTime = static_cast<float>(now - s_lastTime);
+    s_lastTime = now;
 
     // Update mouse position from X11 (v1.92+ API)
     if (g_display && g_window) {
@@ -201,10 +204,14 @@ void ImGui_ImplX11_NewFrame() {
     }
 
     // Modifier state (tracked from key events, not LED indicators)
-    io.AddKeyEvent(ImGuiKey_ModCtrl,  g_keyCtrl);
-    io.AddKeyEvent(ImGuiKey_ModShift, g_keyShift);
-    io.AddKeyEvent(ImGuiKey_ModAlt,   g_keyAlt);
-    io.AddKeyEvent(ImGuiKey_ModSuper, g_keySuper);
+    io.AddKeyEvent(ImGuiKey_LeftCtrl,  g_keyCtrl);
+    io.AddKeyEvent(ImGuiKey_RightCtrl, g_keyCtrl);
+    io.AddKeyEvent(ImGuiKey_LeftShift, g_keyShift);
+    io.AddKeyEvent(ImGuiKey_RightShift,g_keyShift);
+    io.AddKeyEvent(ImGuiKey_LeftAlt,   g_keyAlt);
+    io.AddKeyEvent(ImGuiKey_RightAlt,  g_keyAlt);
+    io.AddKeyEvent(ImGuiKey_LeftSuper, g_keySuper);
+    io.AddKeyEvent(ImGuiKey_RightSuper,g_keySuper);
 }
 
 bool ImGui_ImplX11_HandleKeyEvent(unsigned int keycode, bool isDown, unsigned int state) {
