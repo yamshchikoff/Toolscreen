@@ -38,17 +38,18 @@ echo ""
 
 # Check dependencies
 missing_deps=()
-for pkg in build-essential cmake libx11-dev libxext-dev libxfixes-dev libxi-dev \
-           libgl1-mesa-dev libglew-dev libglfw3-dev libxrandr-dev libxinerama-dev \
-           libxcursor-dev libxxf86vm-dev zlib1g-dev; do
-    if ! dpkg -s "$pkg" &>/dev/null; then
-        missing_deps+=("$pkg")
-    fi
-done
+echo ">> Checking dependencies..."
+if command -v pkg-config &>/dev/null; then
+    for pkg in x11 xext xi xfixes xcursor xrandr xinerama gl; do
+        if ! pkg-config --exists "$pkg" 2>/dev/null; then
+            missing_deps+=("$pkg")
+        fi
+    done
+fi
 
 if [[ ${#missing_deps[@]} -gt 0 ]]; then
-    echo ">> Missing dependencies: ${missing_deps[*]}"
-    echo ">> Install with: sudo apt install -y ${missing_deps[*]}"
+    echo ">> Missing pkg-config packages: ${missing_deps[*]}"
+    echo ">> Install with your package manager (e.g. apt install libx11-dev ...)"
     echo ">> Attempting to continue anyway..."
     echo ""
 fi
