@@ -291,6 +291,11 @@ namespace Vk {
     #define EXCEPTION_INT_OVERFLOW 0xC0000095L
     #define EXCEPTION_PRIV_INSTRUCTION 0xC0000096L
     #define EXCEPTION_STACK_OVERFLOW 0xC00000FDL
+    #define EXCEPTION_IN_PAGE_ERROR 0xC0000006L
+    #define EXCEPTION_INVALID_DISPOSITION 0xC0000026L
+    #define EXCEPTION_NONCONTINUABLE_EXCEPTION 0xC0000025L
+    #define EXCEPTION_CONTINUE_SEARCH 0L
+    #define EXCEPTION_EXECUTE_HANDLER 1
 
     // VK_* macros → canonical Vk::* constants
     #define VK_LBUTTON   Vk::LBUTTON
@@ -619,6 +624,41 @@ namespace Vk {
     inline int WriteFile(void*, const void*, unsigned long, DWORD*, void*) { return 0; }
     inline int FlushFileBuffers(void*) { return 0; }
     inline int MoveFileW(const wchar_t*, const wchar_t*) { return 0; }
+
+    // Shell/filesystem stubs
+    #define CSIDL_PROFILE 0x0028
+    #define SUCCEEDED(hr) (static_cast<int>(hr) >= 0)
+    using WCHAR = wchar_t;
+    inline int GetModuleHandleEx(unsigned long, const wchar_t*, void**) { return 0; }
+    inline int GetCurrentDirectoryW(unsigned long, wchar_t*) { wchar_t cwd[] = L"."; wcscpy((wchar_t*)cwd, cwd); return 1; }
+    inline int SHCreateDirectoryExW(void*, const wchar_t*, void*) { return 0; }
+    inline LONG (*SetUnhandledExceptionFilter(LONG (*)(EXCEPTION_POINTERS*)))(EXCEPTION_POINTERS*) { return nullptr; }
+    inline void _set_se_translator(void (*)(unsigned int, EXCEPTION_POINTERS*)) {}
+
+    // Error codes
+    #define ERROR_SUCCESS 0L
+    #define ERROR_INSUFFICIENT_BUFFER 122L
+
+    // File search stubs
+    struct WIN32_FIND_DATAW { unsigned long dwFileAttributes; FILETIME ftCreationTime, ftLastAccessTime, ftLastWriteTime; unsigned long nFileSizeHigh, nFileSizeLow; wchar_t cFileName[260]; wchar_t cAlternateFileName[14]; };
+    inline void* FindFirstFileW(const wchar_t*, WIN32_FIND_DATAW*) { return reinterpret_cast<void*>(-1); }
+    inline int FindNextFileW(void*, WIN32_FIND_DATAW*) { return 0; }
+    inline int FindClose(void*) { return 0; }
+    #define INVALID_HANDLE_VALUE_FILE reinterpret_cast<void*>(-1)
+
+    // Window visibility stubs
+    inline int IsWindowVisible(void*) { return 0; }
+    inline int GetWindowRect(void*, RECT* r) { if (r) { r->left = r->top = 0; r->right = 1920; r->bottom = 1080; } return 1; }
+    inline int MonitorFromWindow(void*, unsigned long) { return 0; }
+    using HMONITOR = void*;
+    #define MONITOR_DEFAULTTONEAREST 2
+    inline HMONITOR MonitorFromRect(const RECT*, unsigned long) { return nullptr; }
+    struct MONITORINFO { unsigned long cbSize; RECT rcMonitor; RECT rcWork; unsigned long dwFlags; };
+    inline int GetMonitorInfo(HMONITOR, MONITORINFO* mi) { if (mi) { mi->rcMonitor = {0,0,1920,1080}; mi->rcWork = {0,0,1920,1080}; } return 1; }
+    struct POINT { int32_t x, y; };
+    inline int GetClientRect(void*, RECT* r) { if (r) { r->left = r->top = 0; r->right = 1920; r->bottom = 1080; } return 1; }
+    inline int ScreenToClient(void*, POINT*) { return 1; }
+    using LPPOINT = POINT*;
     #define FILE_SHARE_READ 1
     #define FILE_SHARE_WRITE 2
     #define FILE_SHARE_DELETE 4
