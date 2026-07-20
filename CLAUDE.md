@@ -12,3 +12,4 @@
 - **После каждого патча — безусловный коммит.** Как только изменения готовы и проверены, сразу `git add -A && git commit`. Без ожидания дополнительных подтверждений.
 - **fprintf(stderr) НЕ РАБОТАЕТ в Minecraft.** Всегда используй HOOK_LOG() или TS_LOG() — они пишут в файл /home/user/toolscreen.log. stderr Minecraft выкидывает.
 - **ТОЛЬКО ИНЖЕКТОР.** Никаких подмен Java-файлов, никаких LD_PRELOAD-обёрток. Только `sudo ./scripts/inject.sh`.
+- **Сборка всегда с `--parallel $(nproc)`.** `cmake --build out/build/linux-test --parallel $(nproc)`
