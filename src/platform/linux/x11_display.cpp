@@ -39,6 +39,8 @@ bool g_xrandrAvailable = false;
 
 // Custom error handler (non-fatal errors — log and continue)
 int X11ErrorHandler(Display* dpy, XErrorEvent* ev) {
+    // BadWindow is expected during window resize/recreate — suppress
+    if (ev->error_code == BadWindow) return 0;
     char buffer[256];
     XGetErrorText(dpy, ev->error_code, buffer, sizeof(buffer));
     fprintf(stderr, "[Toolscreen] X11 error: %s (code=%d, opcode=%d, resource=%lu)\n",

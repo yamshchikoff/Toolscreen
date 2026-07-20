@@ -428,20 +428,19 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
         fprintf(stderr, "[Toolscreen] ImGui initialized (X11/OpenGL3)\n");
     }
 
-    // Detect game window from current GLX drawable
-    if (X11Display::GetGameWindow() == 0) {
+    // Detect/update game window from current GLX drawable
+    {
         GLXDrawable currentDrawable = glXGetCurrentDrawable();
         if (currentDrawable) {
             Window win = static_cast<Window>(currentDrawable);
             X11Display::SetGameWindow(win);
-
-            // Wire up X11 input → ImGui bridge on first detection
             if (!g_inputWired && g_imguiCtx) {
                 ImGui::SetCurrentContext(g_imguiCtx);
                 X11Input::Install(win);
                 ImGui_ImplX11_Init(X11Display::Get(), win);
                 X11Input::SetEventCallback(RouteX11EventToImGui);
                 g_inputWired = true;
+                fprintf(stderr, "[Toolscreen] X11 input installed on window 0x%lx\n", win);
             }
         }
     }

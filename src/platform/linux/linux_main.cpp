@@ -361,7 +361,7 @@ void ToolscreenLazyInit() {
         TS_LOG("[Toolscreen] Lazy init triggered\n");
 
         XInitThreads();
-        SharedInit::InstallExceptionHandlers();
+        // NOTE: NO signal handlers — JVM uses SIGSEGV internally
 
         if (!InitPlatform()) {
             TS_LOG("[Toolscreen] Platform init failed, Toolscreen disabled\n");
