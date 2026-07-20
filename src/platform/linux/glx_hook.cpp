@@ -384,7 +384,16 @@ void glBlitFramebuffer(GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1,
 
 void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     PROFILE_SCOPE("glXSwapBuffers");
-    TRACE_CALL("[Toolscreen] hk_glXSwapBuffers called\n");
+
+    // Recursion guard: if we called realSwap, it calls the original
+    // glXSwapBuffers which should NOT re-enter our hook.
+    static thread_local bool inHkSwap = false;
+    if (inHkSwap) {
+        auto* realSwap = g_realSwapBuffers.load(std::memory_order_acquire);
+        if (realSwap) realSwap(dpy, drawable);
+        return;
+    }
+    inHkSwap = true;
 
     // Deferred initialization — avoids conflicts with Java classloaders
     ToolscreenLazyInit();
@@ -475,10 +484,12 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     }
 
     // Call the original glXSwapBuffers to present the frame
+    inHkSwap = false;
     auto* realSwap = g_realSwapBuffers.load(std::memory_order_acquire);
     if (realSwap) {
         realSwap(dpy, drawable);
     }
+    inHkSwap = true;
 }
 
 void hk_glViewport(GLint x, GLint y, GLsizei width, GLsizei height) {
