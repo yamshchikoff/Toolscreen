@@ -27,6 +27,11 @@ void CallRealSwapBuffers(Display* dpy, GLXDrawable drawable);
 // Check if hooks are active
 bool IsHooked();
 
+// Runtime hook for dlopen-based injection (without LD_PRELOAD).
+// Finds glXSwapBuffers in the already-loaded libGL and redirects it
+// to hk_glXSwapBuffers via an inline jump. Safe to call from constructor.
+void InstallRuntimeHook();
+
 // ---- Inline hooking engine (replaces MinHook on Linux) ----
 
 // Install an inline hook at `target` redirecting to `detour`.

@@ -494,6 +494,27 @@ void hk_glBlitFramebuffer(GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1,
 SwapBuffersFunc GetRealSwapBuffers() { return g_realSwapBuffers.load(); }
 bool IsHooked() { return g_realSwapBuffers.load() != nullptr; }
 
+// Runtime hook for dlopen-based injection.
+// Called from the constructor. Uses the existing inline hook engine to
+// redirect glXSwapBuffers → hk_glXSwapBuffers in the already-running process.
+void InstallRuntimeHook() {
+    static std::once_flag s_flag;
+    std::call_once(s_flag, []() {
+        void* target = dlsym(RTLD_DEFAULT, "glXSwapBuffers");
+        if (!target) {
+            fprintf(stderr, "[Toolscreen] InstallRuntimeHook: glXSwapBuffers not found\n");
+            return;
+        }
+        void* trampoline = nullptr;
+        if (CreateHook(target, reinterpret_cast<void*>(hk_glXSwapBuffers), &trampoline) && trampoline) {
+            g_realSwapBuffers.store(reinterpret_cast<SwapBuffersFunc>(trampoline));
+            fprintf(stderr, "[Toolscreen] glXSwapBuffers hooked at %p → trampoline %p\n", target, trampoline);
+        } else {
+            fprintf(stderr, "[Toolscreen] InstallRuntimeHook: CreateHook failed\n");
+        }
+    });
+}
+
 void CallRealSwapBuffers(Display* dpy, GLXDrawable drawable) {
     auto* realSwap = g_realSwapBuffers.load();
     if (realSwap) {

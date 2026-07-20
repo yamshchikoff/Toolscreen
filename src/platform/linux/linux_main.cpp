@@ -389,6 +389,9 @@ void ToolscreenLazyInit() {
 extern "C" __attribute__((constructor))
 void ToolscreenLinuxInit() {
     TS_LOG("[Toolscreen] libtoolscreen.so loaded (constructor)\n");
+    // Runtime hook for dlopen injection: patches glXSwapBuffers in-process
+    GLXHook::InstallRuntimeHook();
+    SharedInit::InstallExceptionHandlers();
 }
 
 // __attribute__((destructor)) runs when the .so is unloaded
