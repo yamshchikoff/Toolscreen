@@ -835,6 +835,31 @@ namespace Vk {
     inline int SetWaitableTimer(void*, const LARGE_INTEGER*, long, void*, void*, int) { return 1; }
     inline int PostMessageW(void*, unsigned int, WPARAM, LPARAM) { return 1; }
     inline void* CreateEventW(void*, int, int, const wchar_t*) { return reinterpret_cast<void*>(1); }
+    #define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 2
+    #define TIMER_ALL_ACCESS 0x1F0003
+    inline void* CreateWaitableTimerExW(void*, const wchar_t*, unsigned long, unsigned long) { return reinterpret_cast<void*>(1); }
+    inline void* CreateWaitableTimerW(void*, const wchar_t*, int, const wchar_t*) { return reinterpret_cast<void*>(1); }
+    inline void* CreateWaitableTimerW(const wchar_t*, int, const wchar_t*) { return reinterpret_cast<void*>(1); }
+    inline HANDLE CreateThread(void*, size_t, void* (*)(void*), void*, unsigned long, unsigned long*) { return nullptr; }
+    inline uintptr_t SetTimer(void*, uintptr_t, unsigned int, void*) { return 1; }
+    using HKL = void*;
+    inline unsigned long GetMessageTime() { return 0; }
+    inline short VkKeyScanExW(wchar_t, HKL) { return -1; }
+    #define HIBYTE(w) static_cast<unsigned char>(((w) >> 8) & 0xFF)
+    #define LOBYTE(w) static_cast<unsigned char>((w) & 0xFF)
+    inline int GetKeyboardState(unsigned char*) { return 0; }
+    struct KBDLLHOOKSTRUCT { unsigned long vkCode; unsigned long scanCode; unsigned long flags; unsigned long time; ULONG_PTR dwExtraInfo; };
+    #define LLKHF_EXTENDED 1
+    using HHOOK = void*;
+    using HKL = void*;  // Forward declaration for VkKeyScanExW
+    inline HHOOK SetWindowsHookEx(int, void*, HINSTANCE, unsigned long) { return nullptr; }
+    inline int UnhookWindowsHookEx(HHOOK) { return 0; }
+    inline LRESULT CallNextHookEx(HHOOK, int, WPARAM, LPARAM) { return 0; }
+    #define WH_KEYBOARD_LL 13
+    #define WH_MOUSE_LL 14
+    inline int KillTimer(void*, uintptr_t) { return 0; }
+    inline int SetEvent(void*) { return 1; }
+    inline HMODULE GetModuleHandleA(const char*) { return nullptr; }
     struct WINDOWPOS { HWND hwnd; HWND hwndInsertAfter; int x, y, cx, cy; unsigned int flags; };
     #define WM_INPUT 0xFF
     #define WM_DESTROY 2
@@ -1020,7 +1045,6 @@ namespace Vk {
     #define IDC_ARROW_MAKEINTRESOURCE reinterpret_cast<wchar_t*>(32512)
 
     // Keyboard layout stubs
-    using HKL = void*;
     inline HKL GetKeyboardLayout(unsigned long) { return nullptr; }
     inline int ToUnicodeEx(unsigned int, unsigned int, const unsigned char*, wchar_t*, int, unsigned int, HKL) { return 0; }
     #define LANG_ENGLISH 0x09
