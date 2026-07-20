@@ -273,6 +273,14 @@ void* GetGLFunc(const char* name) {
 // Uses a thread_local guard against re-entrancy (our own rendering may
 // trigger another swap). Resolution via std::call_once for thread safety.
 
+// GLEW #defines glBindFramebuffer/glBlitFramebuffer as macros pointing to
+// __glew* stubs. Undefine them so our LD_PRELOAD interpositions keep their
+// real names and are properly exported to the dynamic symbol table.
+#undef glBindFramebuffer
+#undef glBlitFramebuffer
+
+// LD_PRELOAD interposed functions must be exported despite -fvisibility=hidden
+#pragma GCC visibility push(default)
 extern "C" {
 
 void glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
@@ -315,6 +323,7 @@ void glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
 // via dlsym(RTLD_NEXT) on first call (std::call_once). This avoids the
 // torn-read race that inline-hooking would cause during concurrent rendering.
 
+__attribute__((used))
 void glViewport(GLint x, GLint y, GLsizei width, GLsizei height) {
     static std::once_flag s_once;
     std::call_once(s_once, []() {
@@ -323,6 +332,7 @@ void glViewport(GLint x, GLint y, GLsizei width, GLsizei height) {
     hk_glViewport(x, y, width, height);
 }
 
+__attribute__((used))
 void glBindTexture(GLenum target, GLuint texture) {
     static std::once_flag s_once;
     std::call_once(s_once, []() {
@@ -331,6 +341,7 @@ void glBindTexture(GLenum target, GLuint texture) {
     hk_glBindTexture(target, texture);
 }
 
+__attribute__((used))
 void glBindFramebuffer(GLenum target, GLuint framebuffer) {
     static std::once_flag s_once;
     std::call_once(s_once, []() {
@@ -339,6 +350,7 @@ void glBindFramebuffer(GLenum target, GLuint framebuffer) {
     hk_glBindFramebuffer(target, framebuffer);
 }
 
+__attribute__((used))
 void glBlitFramebuffer(GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1,
                        GLint dstX0, GLint dstY0, GLint dstX1, GLint dstY1,
                        GLbitfield mask, GLenum filter) {
@@ -350,6 +362,7 @@ void glBlitFramebuffer(GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1,
 }
 
 } // extern "C"
+#pragma GCC visibility pop
 
 // ---- Hooked function implementations (called from interposed stubs) ----
 
