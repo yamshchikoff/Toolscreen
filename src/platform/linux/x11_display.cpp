@@ -8,6 +8,7 @@
 #include <X11/keysym.h>
 #include <GL/glx.h>
 #include <X11/extensions/Xrandr.h>
+#include <X11/XF86keysym.h>
 #include <cstdio>
 #include <cstring>
 #include <mutex>
@@ -158,13 +159,13 @@ const std::unordered_map<KeySym, PlatformVk>& GetKeysymToVkMap() {
         { XK_bracketright,  Vk::OEM_6 },
         { XK_apostrophe,    Vk::OEM_7 },
         { XK_less,          Vk::OEM_102 },
-        { XK_XF86AudioMute,        Vk::VOLUME_MUTE },
-        { XK_XF86AudioLowerVolume, Vk::VOLUME_DOWN },
-        { XK_XF86AudioRaiseVolume, Vk::VOLUME_UP },
-        { XK_XF86AudioNext,        Vk::MEDIA_NEXT },
-        { XK_XF86AudioPrev,        Vk::MEDIA_PREV },
-        { XK_XF86AudioStop,        Vk::MEDIA_STOP },
-        { XK_XF86AudioPlay,        Vk::MEDIA_PLAY_PAUSE },
+        { XF86XK_AudioMute,        Vk::VOLUME_MUTE },
+        { XF86XK_AudioLowerVolume, Vk::VOLUME_DOWN },
+        { XF86XK_AudioRaiseVolume, Vk::VOLUME_UP },
+        { XF86XK_AudioNext,        Vk::MEDIA_NEXT },
+        { XF86XK_AudioPrev,        Vk::MEDIA_PREV },
+        { XF86XK_AudioStop,        Vk::MEDIA_STOP },
+        { XF86XK_AudioPlay,        Vk::MEDIA_PLAY_PAUSE },
     };
     return map;
 }

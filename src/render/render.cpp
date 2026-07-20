@@ -9238,7 +9238,7 @@ void InitializeOverlayTextFont(const std::string& fontPath, float baseFontSize, 
         ImFontAtlas testAtlas;
         ImFont* f = testAtlas.AddFontFromFileTTF(p.c_str(), sz);
         if (!f) return false;
-        return testAtlas.Build();
+        return f != nullptr;  // ImGui v1.92.6: Build() is automatic
     };
 
     if (!isStable(usePath, sizePixels)) {
@@ -10143,11 +10143,15 @@ static ImFont* NB_SafeAddFontFromFileTTF(ImFontAtlas* atlas, const char* path, f
                                          const ImFontConfig* fontCfg = nullptr) {
     if (!atlas || !path || !path[0]) return nullptr;
     ImFont* font = nullptr;
+#ifdef _WIN32
     __try {
         font = atlas->AddFontFromFileTTF(path, sizePixels, fontCfg);
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         font = nullptr;
     }
+#else
+    font = atlas->AddFontFromFileTTF(path, sizePixels, fontCfg);
+#endif
     return font;
 }
 

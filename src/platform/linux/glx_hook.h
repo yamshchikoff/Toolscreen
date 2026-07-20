@@ -5,6 +5,7 @@
 #ifdef PLATFORM_LINUX
 
 #include <GL/glx.h>
+#include <atomic>
 
 // ---- GLX SwapBuffers hook and GL function interception ----
 
@@ -68,7 +69,7 @@ void hk_glBlitFramebuffer(GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1,
                           GLbitfield mask, GLenum filter);
 
 // Store original function pointers
-extern SwapBuffersFunc g_realSwapBuffers;
+extern std::atomic<SwapBuffersFunc> g_realSwapBuffers;
 
 using ViewportFunc = void (*)(GLint, GLint, GLsizei, GLsizei);
 using BindTextureFunc = void (*)(GLenum, GLuint);
