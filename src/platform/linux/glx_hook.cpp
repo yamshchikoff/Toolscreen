@@ -434,11 +434,11 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
         ImGui_ImplX11_NewFrame();
         ImGui::NewFrame();
 
-        // TODO: replace DemoWindow with full Toolscreen GUI pipeline
-        // (RenderSameThreadImGui from render.cpp — requires config,
-        // mode resolution, and GPU resource init to be wired up)
+        // Toolscreen GUI test window — verifies ImGui + X11 input work.
+        // Full GUI requires wiring RenderMode() from render.cpp
+        // (needs config, mode resolution, GPU resource init).
         static bool showDemo = true;
-        if (showDemo) ImGui::ShowDemoWindow(&showDemo);
+        ImGui::ShowDemoWindow(&showDemo);
 
         // Render ImGui draw data
         ImGui::Render();
