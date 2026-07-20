@@ -11,6 +11,8 @@
 #include "x11_display.h"
 #include "platform/linux/x11_input.h"
 #include "gui/imgui_impl_x11.h"
+#include "imgui.h"
+#include "imgui_impl_opengl3.h"
 #include "common/profiler.h"
 
 #ifdef PLATFORM_LINUX
@@ -410,7 +412,35 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
         }
     }
 
-    // TODO: Full render pipeline — RenderMode(), GUI, etc.
+    // ---- Minimal GUI render pipeline ----
+    // Initialize ImGui context on first frame
+    static bool g_imguiInitialized = false;
+    if (!g_imguiInitialized && g_glewReady.load()) {
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        ImGui_ImplOpenGL3_Init("#version 330");
+        ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+        ImGui::GetStyle().FrameRounding = 3.0f;
+        g_imguiInitialized = true;
+        fprintf(stderr, "[Toolscreen] ImGui initialized (X11/OpenGL3)\n");
+    }
+
+    if (g_imguiInitialized && X11Display::GetGameWindow() != 0) {
+        // Poll X11 events and feed to ImGui
+        X11Input::PollEvents();
+
+        // Start the ImGui frame
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplX11_NewFrame();
+        ImGui::NewFrame();
+
+        // Render a demo window (replace with Toolscreen GUI later)
+        ImGui::ShowDemoWindow(nullptr);
+
+        // Render ImGui draw data
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    }
 }
 
 void hk_glViewport(GLint x, GLint y, GLsizei width, GLsizei height) {
