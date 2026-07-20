@@ -408,7 +408,7 @@ namespace Vk {
     #define CREATE_NEW 1
     #define ERROR_FILE_EXISTS 80
     #define INVALID_HANDLE_VALUE reinterpret_cast<void*>(-1)
-    #define RT_RCDATA reinterpret_cast<void*>(10)
+    #define RT_RCDATA MAKEINTRESOURCEW(10)
 
     // Win32 string type aliases
     using LPCWSTR = const wchar_t*;
@@ -926,8 +926,7 @@ namespace Vk {
 
     // XBUTTON/WHEEL macros
     #define GET_XBUTTON_WPARAM(w) ((unsigned short)(((w) >> 16) & 0xFFFF))
-    inline constexpr unsigned short XBUTTON1 = 1;
-    inline constexpr unsigned short XBUTTON2 = 2;
+    // XBUTTON1/XBUTTON2 — Windows mouse X button indices
     #define ERROR_SHARING_VIOLATION 32L
 
     // WinHTTP extra stubs
@@ -949,10 +948,11 @@ namespace Vk {
     inline unsigned long SizeofResource(HMODULE, void*) { return 0; }
     inline const void* LockResource(void*) { return nullptr; }
 
-    // ImGui API compatibility (v1.92.6)
-    // SetWindowFontScale → use ImGui::GetIO().FontGlobalScale
-    // GetWindowContentRegionMax → use ImGui::GetWindowContentRegionMax() (function, not value)
-    // ImFontAtlas::Build → ImFontAtlas::Builder
+    // ImGui API compatibility (v1.92.6 breaking changes)
+    // These #defines are temporary workarounds; the code should be migrated properly.
+    // SetWindowFontScale → removed, use GetIO().FontGlobalScale
+    // GetWindowContentRegionMax → removed, use GetContentRegionAvail()
+    // ImFontAtlas::Build → renamed to different signature
     #define GET_WHEEL_DELTA_WPARAM(w) ((short)(((w) >> 16) & 0xFFFF))
     #define GET_KEYSTATE_WPARAM(w) ((unsigned short)(w & 0xFFFF))
     #define GET_KEYSTATE_LPARAM(l) ((unsigned short)(l & 0xFFFF))

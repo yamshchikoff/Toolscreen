@@ -106,7 +106,7 @@ bool IsStableGuiFontPath(const std::string& path, float size) {
     ImFontAtlas testAtlas;
     ImFont* font = testAtlas.AddFontFromFileTTF(resolvedPath.c_str(), size);
     if (!font) return false;
-    return testAtlas.Build();
+    unsigned char* pixels; int w, h; testAtlas.GetTexDataAsRGBA32(&pixels, &w, &h); return pixels != nullptr;
 }
 
 const ImWchar* GetGlyphRangesOrDefault(ImFontAtlas* atlas, const std::vector<ImWchar>& glyphRanges) {
@@ -230,8 +230,7 @@ static void RebuildImGuiFontAtlas(float scaleFactor, float keyboardPrimarySize, 
     const NinjabrainOverlayConfig defaultNinjabrainOverlay;
     LoadNinjabrainFont(io.Fonts, nbSnap ? nbSnap->ninjabrainOverlay : defaultNinjabrainOverlay, scaleFactor);
 
-    io.Fonts->Build();
-
+    // ImGui v1.92.6: Build() is automatic when backend supports RendererHasTextures
     if (io.BackendRendererUserData != nullptr) {
         ImGui_ImplOpenGL3_DestroyDeviceObjects();
         ImGui_ImplOpenGL3_CreateDeviceObjects();
@@ -1198,7 +1197,7 @@ void RenderProfilerOverlay(bool showProfiler, bool showPerformanceOverlay) {
                      ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoFocusOnAppearing |
                      ImGuiWindowFlags_AlwaysAutoResize);
 
-    ImGui::SetWindowFontScale(g_config.debug.profilerScale);
+    ImGui::GetStyle().FontScaleMain = g_config.debug.profilerScale;
 
     ImGui::Text("Toolscreen Profiler (Hierarchical)");
     ImGui::Separator();
