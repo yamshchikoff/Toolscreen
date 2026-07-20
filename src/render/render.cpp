@@ -25,7 +25,9 @@
 #else
 #include "imgui_impl_win32.h"
 #endif
+#ifdef _WIN32
 #include <Shlwapi.h>
+#endif
 #include <cctype>
 #include <algorithm>
 #include <chrono>

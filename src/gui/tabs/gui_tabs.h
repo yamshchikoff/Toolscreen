@@ -13,13 +13,11 @@
 #include "common/utils.h"
 #include "features/window_overlay.h"
 #include <GL/glew.h>
+#ifdef _WIN32
 #include <Shlwapi.h>
-#include <algorithm>
-#include <atomic>
-#include <cstdint>
-#include <cctype>
-#include <chrono>
 #include <commdlg.h>
+#endif
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <future>

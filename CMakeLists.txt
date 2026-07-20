@@ -54,6 +54,18 @@ else()
     set(TOOLSCREEN_STAGE_LIBLOGGER_PDB OFF)
     set(TOOLSCREEN_BUILD_LIBLOGGER_FROM_SOURCE ON)
 
+    # Sysroot for development headers (when system -dev packages are unavailable)
+    if(DEFINED ENV{TOOLSCREEN_SYSROOT})
+        set(TOOLSCREEN_SYSROOT "$ENV{TOOLSCREEN_SYSROOT}")
+        include_directories(SYSTEM "${TOOLSCREEN_SYSROOT}/usr/include")
+        link_directories("${TOOLSCREEN_SYSROOT}/usr/lib/x86_64-linux-gnu")
+        set(OPENGL_INCLUDE_DIR "${TOOLSCREEN_SYSROOT}/usr/include" CACHE PATH "OpenGL include path")
+        set(X11_INCLUDE_DIR "${TOOLSCREEN_SYSROOT}/usr/include" CACHE PATH "X11 include path")
+        set(X11_X11_INCLUDE_PATH "${TOOLSCREEN_SYSROOT}/usr/include" CACHE PATH "X11 X11 include path")
+        set(X11_Xlib_INCLUDE_PATH "${TOOLSCREEN_SYSROOT}/usr/include" CACHE PATH "X11 Xlib include path")
+        message(STATUS "Toolscreen sysroot: ${TOOLSCREEN_SYSROOT}")
+    endif()
+
     # Find Linux dependencies
     find_package(OpenGL REQUIRED)
     find_package(X11 REQUIRED)

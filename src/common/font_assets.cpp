@@ -385,6 +385,7 @@ std::string NormalizePathForComparison(const std::string& path) {
 }
 
 std::wstring GetWindowsFontsDirectory() {
+#ifdef _WIN32
     wchar_t windowsDirectory[MAX_PATH] = {};
     const UINT length = GetWindowsDirectoryW(windowsDirectory, MAX_PATH);
     if (length == 0 || length >= MAX_PATH) {
@@ -392,6 +393,9 @@ std::wstring GetWindowsFontsDirectory() {
     }
 
     return (std::filesystem::path(windowsDirectory) / "Fonts").wstring();
+#else
+    return L"/usr/share/fonts";
+#endif
 }
 
 bool HasTtfExtension(const std::filesystem::path& path) {
@@ -513,6 +517,7 @@ bool MatchesBundledFontPath(const BundledFontAsset& asset, const std::string& pa
 
 bool WriteEmbeddedResourceToFile(WORD resourceId, const std::filesystem::path& destination, const void* moduleAnchor,
                                  bool overwriteExisting) {
+#ifdef _WIN32
     if (moduleAnchor == nullptr) {
         return false;
     }
@@ -574,6 +579,13 @@ bool WriteEmbeddedResourceToFile(WORD resourceId, const std::filesystem::path& d
     }
 
     return true;
+#else
+    (void)resourceId;
+    (void)destination;
+    (void)moduleAnchor;
+    (void)overwriteExisting;
+    return false;
+#endif
 }
 
 } // namespace

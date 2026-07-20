@@ -6,6 +6,8 @@
 #include <vector>
 #ifdef _WIN32
 #include <windows.h>
+#elif defined(PLATFORM_LINUX)
+#include "platform/platform_types.h"
 #endif
 
 struct BundledFontAsset {

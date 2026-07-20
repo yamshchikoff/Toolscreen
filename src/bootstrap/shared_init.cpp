@@ -20,6 +20,8 @@ namespace SharedInit {
 
 namespace {
 
+// Declared in dllmain.cpp (Windows), defined here for Linux
+std::atomic<bool> g_translationsLoaded{ false };
 
 // ---- Linux signal handler (replaces Windows SEH) ----
 #ifdef PLATFORM_LINUX

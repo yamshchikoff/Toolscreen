@@ -2,6 +2,8 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#elif defined(PLATFORM_LINUX)
+#include "platform/platform_types.h"
 #endif
 #include <algorithm>
 #include <atomic>
@@ -710,10 +712,13 @@ inline DWORD GetKeyRebindScanCodeWithExtendedFlag(DWORD vkCode) {
         }
     };
 
-    UINT scanCodeWithFlags = MapVirtualKeyW(static_cast<UINT>(vkCode), MAPVK_VK_TO_VSC_EX);
+    UINT scanCodeWithFlags = 0;
+#ifdef _WIN32
+    scanCodeWithFlags = MapVirtualKeyW(static_cast<UINT>(vkCode), MAPVK_VK_TO_VSC_EX);
     if (scanCodeWithFlags == 0) {
         scanCodeWithFlags = MapVirtualKeyW(static_cast<UINT>(vkCode), MAPVK_VK_TO_VSC);
     }
+#endif
 
     if ((scanCodeWithFlags & 0xFF00) == 0 && isExtendedVk(vkCode) && (scanCodeWithFlags & 0xFF) != 0) {
         scanCodeWithFlags |= 0xE000;
@@ -726,10 +731,13 @@ inline DWORD ResolveKeyRebindModifierVkFromScanCode(UINT scanCodeWithFlags) {
     const UINT scanLow = scanCodeWithFlags & 0xFF;
     if (scanLow == 0) return 0;
 
-    DWORD mappedVk = static_cast<DWORD>(MapVirtualKeyW(scanCodeWithFlags, MAPVK_VSC_TO_VK_EX));
+    DWORD mappedVk = 0;
+#ifdef _WIN32
+    mappedVk = static_cast<DWORD>(MapVirtualKeyW(scanCodeWithFlags, MAPVK_VSC_TO_VK_EX));
     if (mappedVk == 0 && (scanCodeWithFlags & 0xFF00) != 0) {
         mappedVk = static_cast<DWORD>(MapVirtualKeyW(scanLow, MAPVK_VSC_TO_VK_EX));
     }
+#endif
     if (mappedVk != 0) {
         mappedVk = NormalizeKeyRebindModifierVkFromConfig(mappedVk, scanCodeWithFlags);
     }

@@ -4,6 +4,12 @@
 #define GLEW_STATIC
 #endif
 #include <GL/glew.h>
+#ifdef PLATFORM_LINUX
+#include "platform/platform_types.h"
+#ifndef APIENTRY
+#define APIENTRY
+#endif
+#endif
 
 #include <atomic>
 #include <chrono>

@@ -14,9 +14,14 @@
 extern std::atomic<GLuint> g_cachedGameTextureId;
 
 #include "third_party/stb_image.h"
+#ifdef _WIN32
 #include <DbgHelp.h>
 #include <ShlObj.h>
 #include <Shlwapi.h>
+#include <eh.h>
+#pragma comment(lib, "Shlwapi.lib")
+#pragma comment(lib, "DbgHelp.lib")
+#endif
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -24,7 +29,6 @@ extern std::atomic<GLuint> g_cachedGameTextureId;
 #include <cstdint>
 #include <cstdlib>
 #include <cwctype>
-#include <eh.h>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -36,9 +40,6 @@ extern std::atomic<GLuint> g_cachedGameTextureId;
 #include <unordered_set>
 #include <utility>
 #include <vector>
-
-#pragma comment(lib, "Shlwapi.lib")
-#pragma comment(lib, "DbgHelp.lib")
 
 static std::atomic<bool> g_symbolsInitialized{ false };
 static std::atomic<bool> g_symbolInitAttempted{ false };
@@ -94,6 +95,7 @@ std::string ResolveStackFrame(void* address) {
 
     std::lock_guard<std::mutex> lock(g_symbolMutex);
 
+#ifdef _WIN32
     HANDLE process = GetCurrentProcess();
     DWORD64 addr64 = reinterpret_cast<DWORD64>(address);
 
@@ -125,6 +127,11 @@ std::string ResolveStackFrame(void* address) {
     }
 
     return result.str();
+#else
+    std::stringstream fallback;
+    fallback << "0x" << std::hex << reinterpret_cast<uintptr_t>(address);
+    return fallback.str();
+#endif
 }
 
 // Helper to format full stack trace with symbols

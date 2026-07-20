@@ -26,15 +26,18 @@
 #include "hooks/input_hook.h"
 
 #include <GL/glew.h>
+#ifdef _WIN32
 #include <ShlObj.h>
 #include <shellapi.h>
 #include <Shlwapi.h>
+#include <commdlg.h>
+#include <winhttp.h>
+#endif
 #include <algorithm>
 #include <atomic>
 #include <cctype>
 #include <chrono>
 #include <cmath>
-#include <commdlg.h>
 #include <cstring>
 #include <cstdint>
 #include <cstdlib>
@@ -51,7 +54,6 @@
 #include <thread>
 #include <unordered_set>
 #include <unordered_map>
-#include <winhttp.h>
 #ifdef _WIN32
 #include <windowsx.h>
 #endif

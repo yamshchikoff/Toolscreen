@@ -212,6 +212,241 @@ namespace Vk {
     using NativeThreadId = uint64_t;
 
     #define PLATFORM_LINUX 1
+
+    // Linux-specific includes needed by polyfills below
+    #include <unistd.h>
+    #include <cstring>
+    #include <codecvt>
+    #include <locale>
+
+    // ---- Windows-compatible type shims (shared codebase compatibility) ----
+    // Basic types
+    using DWORD = uint32_t;
+    using UINT = unsigned int;
+    using WPARAM = uint64_t;
+    using LPARAM = int64_t;
+    using LRESULT = int64_t;
+    using LPVOID = void*;
+    using ULONG_PTR = uintptr_t;
+    using WORD = uint16_t;
+    using SHORT = int16_t;
+    using BOOL = int;
+    using ULONGLONG = uint64_t;
+    #define FALSE 0
+    #define TRUE 1
+
+    // Calling-convention macros (no-op on Linux)
+    #define WINAPI
+    #define APIENTRY
+    #define CALLBACK
+    #define __stdcall
+
+    // Window/graphics types as opaque pointers
+    using HWND = void*;
+    using HMODULE = void*;
+    using HGLRC = void*;
+    using HDC = void*;
+    using HCURSOR = void*;
+    using WNDPROC = void*;
+    using HINSTANCE = void*;
+    using HANDLE = void*;
+    using HICON = void*;
+    using HBRUSH = void*;
+    using HMENU = void*;
+    using HRGN = void*;
+    using HPEN = void*;
+    using HFONT = void*;
+    using HBITMAP = void*;
+    using HRSRC = void*;
+    using HGLOBAL = void*;
+
+    // RECT (matching Windows layout)
+    struct tagRECT { int32_t left, top, right, bottom; };
+    using RECT = tagRECT;
+
+    // SEH types (stubs for Linux — SEH doesn't exist, only on Windows)
+    struct EXCEPTION_POINTERS;
+    using LONG = int32_t;
+
+    // VK_* macros → canonical Vk::* constants
+    #define VK_LBUTTON   Vk::LBUTTON
+    #define VK_RBUTTON   Vk::RBUTTON
+    #define VK_MBUTTON   Vk::MBUTTON
+    #define VK_XBUTTON1  Vk::XBUTTON1
+    #define VK_XBUTTON2  Vk::XBUTTON2
+    #define VK_BACK      Vk::BACK
+    #define VK_TAB       Vk::TAB
+    #define VK_CLEAR     Vk::CLEAR
+    #define VK_RETURN    Vk::RETURN
+    #define VK_SHIFT     Vk::SHIFT
+    #define VK_CONTROL   Vk::CONTROL
+    #define VK_MENU      Vk::MENU
+    #define VK_PAUSE     Vk::PAUSE
+    #define VK_CAPITAL   Vk::CAPITAL
+    #define VK_ESCAPE    Vk::ESCAPE
+    #define VK_SPACE     Vk::SPACE
+    #define VK_PRIOR     Vk::PRIOR
+    #define VK_NEXT      Vk::NEXT
+    #define VK_END       Vk::END
+    #define VK_HOME      Vk::HOME
+    #define VK_LEFT      Vk::LEFT
+    #define VK_UP        Vk::UP
+    #define VK_RIGHT     Vk::RIGHT
+    #define VK_DOWN      Vk::DOWN
+    #define VK_SNAPSHOT  Vk::SNAPSHOT
+    #define VK_INSERT    Vk::INSERT
+    #define VK_DELETE    Vk::DELETE
+    #define VK_LWIN      Vk::LWIN
+    #define VK_RWIN      Vk::RWIN
+    #define VK_APPS      Vk::APPS
+    #define VK_NUMLOCK   Vk::NUMLOCK
+    #define VK_SCROLL    Vk::SCROLL
+    #define VK_LSHIFT    Vk::LSHIFT
+    #define VK_RSHIFT    Vk::RSHIFT
+    #define VK_LCONTROL  Vk::LCONTROL
+    #define VK_RCONTROL  Vk::RCONTROL
+    #define VK_LMENU     Vk::LMENU
+    #define VK_RMENU     Vk::RMENU
+    #define VK_OEM_1     Vk::OEM_1
+    #define VK_OEM_PLUS  Vk::OEM_PLUS
+    #define VK_OEM_COMMA Vk::OEM_COMMA
+    #define VK_OEM_MINUS Vk::OEM_MINUS
+    #define VK_OEM_PERIOD Vk::OEM_PERIOD
+    #define VK_OEM_2     Vk::OEM_2
+    #define VK_OEM_3     Vk::OEM_3
+    #define VK_OEM_4     Vk::OEM_4
+    #define VK_OEM_5     Vk::OEM_5
+    #define VK_OEM_6     Vk::OEM_6
+    #define VK_OEM_7     Vk::OEM_7
+    #define VK_OEM_102   Vk::OEM_102
+    #define VK_SEPARATOR Vk::SEPARATOR
+    #define VK_ADD       Vk::ADD
+    #define VK_SUBTRACT  Vk::SUBTRACT
+    #define VK_MULTIPLY  Vk::MULTIPLY
+    #define VK_DIVIDE    Vk::DIVIDE
+    #define VK_DECIMAL   Vk::DECIMAL
+    #define VK_F1        Vk::F1
+    #define VK_F2        Vk::F2
+    #define VK_F3        Vk::F3
+    #define VK_F4        Vk::F4
+    #define VK_F5        Vk::F5
+    #define VK_F6        Vk::F6
+    #define VK_F7        Vk::F7
+    #define VK_F8        Vk::F8
+    #define VK_F9        Vk::F9
+    #define VK_F10       Vk::F10
+    #define VK_F11       Vk::F11
+    #define VK_F12       Vk::F12
+    #define VK_F13       Vk::F13
+    #define VK_F14       Vk::F14
+    #define VK_F15       Vk::F15
+    #define VK_F16       Vk::F16
+    #define VK_F17       Vk::F17
+    #define VK_F18       Vk::F18
+    #define VK_F19       Vk::F19
+    #define VK_F20       Vk::F20
+    #define VK_F21       Vk::F21
+    #define VK_F22       Vk::F22
+    #define VK_F23       Vk::F23
+    #define VK_F24       Vk::F24
+    #define VK_NUMPAD0   Vk::NUMPAD0
+    #define VK_NUMPAD1   Vk::NUMPAD1
+    #define VK_NUMPAD2   Vk::NUMPAD2
+    #define VK_NUMPAD3   Vk::NUMPAD3
+    #define VK_NUMPAD4   Vk::NUMPAD4
+    #define VK_NUMPAD5   Vk::NUMPAD5
+    #define VK_NUMPAD6   Vk::NUMPAD6
+    #define VK_NUMPAD7   Vk::NUMPAD7
+    #define VK_NUMPAD8   Vk::NUMPAD8
+    #define VK_NUMPAD9   Vk::NUMPAD9
+
+    // MapVirtualKey constants (used in gui_input.cpp)
+    #define MAPVK_VK_TO_VSC    0
+    #define MAPVK_VSC_TO_VK    1
+    #define MAPVK_VK_TO_CHAR   2
+    #define MAPVK_VSC_TO_VK_EX 3
+    #define MAPVK_VK_TO_VSC_EX 4
+
+    // Additional Windows compatibility macros
+    #define MAX_PATH 4096
+    #define CP_UTF8 65001
+    #define WM_APP 0x8000
+    #define GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS 4
+    #define GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT 2
+    #define GENERIC_WRITE 0x40000000
+    #define FILE_ATTRIBUTE_NORMAL 0x80
+    #define CREATE_ALWAYS 2
+    #define CREATE_NEW 1
+    #define ERROR_FILE_EXISTS 80
+    #define INVALID_HANDLE_VALUE reinterpret_cast<void*>(-1)
+    #define RT_RCDATA reinterpret_cast<void*>(10)
+
+    // Win32 string type aliases
+    using LPCWSTR = const wchar_t*;
+    using LPCTSTR = const wchar_t*;
+    using LPTSTR = wchar_t*;
+    using LPWSTR = wchar_t*;
+
+    // GetCurrentProcessId polyfill
+    inline unsigned long GetCurrentProcessId() { return static_cast<unsigned long>(::getpid()); }
+    inline void* GetCurrentProcess() { return reinterpret_cast<void*>(static_cast<uintptr_t>(::getpid())); }
+
+    // DbgHelp stubs (for compilation only; not functional on Linux)
+    using DWORD64 = uint64_t;
+    #define MAX_SYM_NAME 2000
+    struct SYMBOL_INFO { unsigned long SizeOfStruct; unsigned long MaxNameLen; DWORD64 Address; char Name[1]; };
+    using PSYMBOL_INFO = SYMBOL_INFO*;
+    struct IMAGEHLP_LINE64 { unsigned long SizeOfStruct; DWORD64 Address; unsigned long LineNumber; char FileName[1]; };
+    using TCHAR = char;
+
+    // MultiByteToWideChar / WideCharToMultiByte polyfills (UTF-8 only)
+    inline int MultiByteToWideChar(unsigned int /*CodePage*/, unsigned long /*dwFlags*/,
+                                    const char* lpMultiByteStr, int cbMultiByte,
+                                    wchar_t* lpWideCharStr, int cchWideChar) {
+        if (!lpMultiByteStr || cbMultiByte == 0) return 0;
+        std::string src(lpMultiByteStr, cbMultiByte < 0 ? strlen(lpMultiByteStr) : static_cast<size_t>(cbMultiByte));
+        if (cchWideChar == 0) {
+            std::wstring_convert<std::codecvt_utf8<wchar_t>> conv;
+            try { return static_cast<int>(conv.from_bytes(src).size()); }
+            catch (...) { return 0; }
+        }
+        std::wstring_convert<std::codecvt_utf8<wchar_t>> conv;
+        try {
+            std::wstring result = conv.from_bytes(src);
+            size_t len = std::min(static_cast<size_t>(cchWideChar) - 1, result.size());
+            memcpy(lpWideCharStr, result.c_str(), len * sizeof(wchar_t));
+            lpWideCharStr[len] = L'\0';
+            return static_cast<int>(len);
+        } catch (...) { return 0; }
+    }
+
+    inline int WideCharToMultiByte(unsigned int /*CodePage*/, unsigned long /*dwFlags*/,
+                                    const wchar_t* lpWideCharStr, int cchWideChar,
+                                    char* lpMultiByteStr, int cbMultiByte,
+                                    const char* /*lpDefaultChar*/, int* /*lpUsedDefaultChar*/) {
+        if (!lpWideCharStr || cchWideChar == 0) return 0;
+        std::wstring src(lpWideCharStr, cchWideChar < 0 ? wcslen(lpWideCharStr) : static_cast<size_t>(cchWideChar));
+        std::wstring_convert<std::codecvt_utf8<wchar_t>> conv;
+        try {
+            std::string result = conv.to_bytes(src);
+            if (cbMultiByte == 0) return static_cast<int>(result.size());
+            size_t len = std::min(static_cast<size_t>(cbMultiByte) - 1, result.size());
+            memcpy(lpMultiByteStr, result.c_str(), len);
+            lpMultiByteStr[len] = '\0';
+            return static_cast<int>(len);
+        } catch (...) { return 0; }
+    }
+
+
+    // getenv_s polyfill
+    inline int getenv_s(size_t* requiredSize, char* buffer, size_t bufferSize, const char* name) {
+        const char* val = ::getenv(name);
+        if (!val) { if (requiredSize) *requiredSize = 0; return 1; }
+        size_t len = strlen(val);
+        if (requiredSize) *requiredSize = len;
+        if (buffer && bufferSize > len) { strcpy(buffer, val); return 0; }
+        return (buffer && bufferSize > 0) ? 1 : 0;
+    }
 #elif defined(_WIN32)
     // On Windows, these map to the real Win32 types
     #include <windows.h>

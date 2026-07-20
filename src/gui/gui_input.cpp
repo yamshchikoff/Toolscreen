@@ -5,18 +5,17 @@
 #include "common/utils.h"
 #include "third_party/stb_image.h"
 
+#ifdef _WIN32
 #include <ShlObj.h>
 #include <Shlwapi.h>
-#include <chrono>
 #include <commdlg.h>
+#include <windowsx.h>
+#pragma comment(lib, "Shlwapi.lib")
+#endif
+#include <chrono>
 #include <filesystem>
 #include <future>
 #include <map>
-#ifdef _WIN32
-#include <windowsx.h>
-#endif
-
-#pragma comment(lib, "Shlwapi.lib")
 
 static std::atomic<uint64_t> g_bindingInputEventSequence{ 0 };
 static std::atomic<DWORD> g_bindingInputEventVk{ 0 };
