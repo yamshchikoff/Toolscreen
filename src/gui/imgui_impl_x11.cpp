@@ -180,8 +180,13 @@ void ImGui_ImplX11_NewFrame() {
     io.DeltaTime = static_cast<float>(now - s_lastTime);
     s_lastTime = now;
 
-    // Update mouse position from X11 (v1.92+ API)
+    // Update display size and mouse position from X11
     if (g_display && g_window) {
+        XWindowAttributes attrs;
+        if (XGetWindowAttributes(g_display, g_window, &attrs)) {
+            io.DisplaySize = ImVec2(static_cast<float>(attrs.width), static_cast<float>(attrs.height));
+            io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
+        }
         Window root, child;
         int rootX, rootY, winX, winY;
         unsigned int mask;
