@@ -23,7 +23,11 @@ set(TOOLSCREEN_LIBLOGGER_FILE_DESCRIPTION "LibLogger")
 set(TOOLSCREEN_INSTALLER_FILE_DESCRIPTION "Toolscreen installer")
 set(TOOLSCREEN_DOWNLOADER_FILE_DESCRIPTION "Toolscreen downloader")
 
-project(Toolscreen VERSION ${TOOLSCREEN_VERSION} LANGUAGES C CXX RC)
+if(WIN32)
+    project(Toolscreen VERSION ${TOOLSCREEN_VERSION} LANGUAGES C CXX RC)
+else()
+    project(Toolscreen VERSION ${TOOLSCREEN_VERSION} LANGUAGES C CXX)
+endif()
 
 include(CTest)
 
@@ -37,8 +41,37 @@ configure_file(
     @ONLY
 )
 
-if(NOT WIN32)
-    message(FATAL_ERROR "Toolscreen only supports Windows builds.")
+if(WIN32)
+    # Windows build — continue with existing setup
+else()
+    # Linux build — skip Win32-specific packaging, use Linux dependencies
+    message(STATUS "Toolscreen Linux build — Windows-only features disabled")
+
+    # Override options for Linux
+    set(TOOLSCREEN_ENABLE_JAR_PACKAGING OFF)
+    set(TOOLSCREEN_ENABLE_EXE_PACKAGING OFF)
+    set(TOOLSCREEN_BUILD_DOWNLOADER_ARTIFACTS OFF)
+    set(TOOLSCREEN_STAGE_LIBLOGGER_PDB OFF)
+    set(TOOLSCREEN_BUILD_LIBLOGGER_FROM_SOURCE ON)
+
+    # Find Linux dependencies
+    find_package(OpenGL REQUIRED)
+    find_package(X11 REQUIRED)
+
+    # Set up Linux source files
+    set(TOOLSCREEN_PLATFORM_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/platform/linux")
+    set(TOOLSCREEN_LINUX_PLATFORM_SOURCES
+        ${TOOLSCREEN_PLATFORM_DIR}/x11_display.cpp
+        ${TOOLSCREEN_PLATFORM_DIR}/x11_window.cpp
+        ${TOOLSCREEN_PLATFORM_DIR}/glx_hook.cpp
+        ${TOOLSCREEN_PLATFORM_DIR}/x11_input.cpp
+        ${TOOLSCREEN_PLATFORM_DIR}/x11_capture.cpp
+        ${TOOLSCREEN_PLATFORM_DIR}/x11_cursor.cpp
+        ${TOOLSCREEN_PLATFORM_DIR}/linux_main.cpp
+    )
+    set(TOOLSCREEN_LINUX_SHARED_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/bootstrap/shared_init.cpp
+    )
 endif()
 
 option(TOOLSCREEN_ENABLE_JAR_PACKAGING "Enable the EasyInjectBundled jar packaging target." ON)
@@ -131,6 +164,7 @@ endif()
 
 include(FetchContent)
 
+if(WIN32)
 FetchContent_Declare(
     minhook
     GIT_REPOSITORY https://github.com/m417z/minhook-detours
@@ -165,6 +199,7 @@ endif()
     toolscreen_enable_release_symbols(toolscreen_minhook)
 
 add_library(Toolscreen::minhook ALIAS toolscreen_minhook)
+endif()
 
 FetchContent_Declare(
     glew
@@ -193,11 +228,13 @@ FetchContent_Declare(
     GIT_SHALLOW TRUE
 )
 
+if(WIN32)
 FetchContent_Declare(
     webview2_sdk
     URL https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/1.0.3650.58
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
+endif()
 
 FetchContent_GetProperties(glew)
 if(NOT glew_POPULATED)
@@ -235,6 +272,7 @@ if(NOT cpp_httplib_POPULATED)
     FetchContent_Populate(cpp_httplib)
 endif()
 
+if(WIN32)
 FetchContent_GetProperties(webview2_sdk)
 if(NOT webview2_sdk_POPULATED)
     FetchContent_Populate(webview2_sdk)
@@ -256,9 +294,11 @@ endif()
 if(NOT EXISTS "${TOOLSCREEN_WEBVIEW2_LOADER_STATIC_LIB}")
     message(FATAL_ERROR "WebView2LoaderStatic.lib was not found at ${TOOLSCREEN_WEBVIEW2_LOADER_STATIC_LIB}")
 endif()
+endif()
 
 set(TOOLSCREEN_IMGUI_DIR "${imgui_SOURCE_DIR}")
 
+if(WIN32)
 add_library(toolscreen_imgui STATIC
     ${TOOLSCREEN_IMGUI_DIR}/imgui.cpp
     ${TOOLSCREEN_IMGUI_DIR}/imgui_draw.cpp
@@ -291,8 +331,48 @@ set_target_properties(toolscreen_imgui PROPERTIES
 )
 
 toolscreen_enable_release_symbols(toolscreen_imgui)
+else()
+# Linux: use custom X11 backend instead of Win32/GLFW
+# (We're in-process, can't create a new GLFW window — use the game's existing GL context)
+add_library(toolscreen_imgui STATIC
+    ${TOOLSCREEN_IMGUI_DIR}/imgui.cpp
+    ${TOOLSCREEN_IMGUI_DIR}/imgui_draw.cpp
+    ${TOOLSCREEN_IMGUI_DIR}/imgui_tables.cpp
+    ${TOOLSCREEN_IMGUI_DIR}/imgui_widgets.cpp
+    ${TOOLSCREEN_IMGUI_DIR}/imgui_demo.cpp
+    ${TOOLSCREEN_IMGUI_DIR}/misc/cpp/imgui_stdlib.cpp
+    ${TOOLSCREEN_IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/gui/imgui_impl_x11.cpp
+)
 
+target_include_directories(toolscreen_imgui PUBLIC
+    ${TOOLSCREEN_IMGUI_DIR}
+    ${TOOLSCREEN_IMGUI_DIR}/backends
+    ${TOOLSCREEN_IMGUI_DIR}/misc/cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${X11_INCLUDE_DIRS}
+)
+
+target_compile_definitions(toolscreen_imgui PUBLIC
+    IMGUI_IMPL_OPENGL_LOADER_GLEW
+    IMGUI_DISABLE_OBSOLETE_FUNCTIONS
+)
+
+target_link_libraries(toolscreen_imgui PUBLIC
+    Toolscreen::glew
+    OpenGL::GL
+    X11::X11
+)
+
+set_target_properties(toolscreen_imgui PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    OUTPUT_NAME "toolscreen_imgui"
+)
+endif()
+
+if(WIN32)
 find_package(OpenGL REQUIRED)
+endif()
 
 set(TOOLSCREEN_MODULE_DIRS
     bootstrap
@@ -327,12 +407,26 @@ endforeach()
 list(REMOVE_DUPLICATES TOOLSCREEN_SOURCES)
 list(REMOVE_DUPLICATES TOOLSCREEN_HEADERS)
 
+if(WIN32)
 add_library(${PROJECT_NAME} SHARED
     ${TOOLSCREEN_SOURCES}
     ${TOOLSCREEN_HEADERS}
     ${TOOLSCREEN_GENERATED_VERSION_HEADER}
     ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/resource.rc
 )
+else()
+# Remove Windows-only source files
+list(FILTER TOOLSCREEN_SOURCES EXCLUDE REGEX "dllmain\\.cpp$")
+list(FILTER TOOLSCREEN_SOURCES EXCLUDE REGEX "resource\\.rc$")
+
+add_library(${PROJECT_NAME} SHARED
+    ${TOOLSCREEN_SOURCES}
+    ${TOOLSCREEN_HEADERS}
+    ${TOOLSCREEN_GENERATED_VERSION_HEADER}
+    ${TOOLSCREEN_LINUX_PLATFORM_SOURCES}
+    ${TOOLSCREEN_LINUX_SHARED_SOURCES}
+)
+endif()
 
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory
@@ -349,13 +443,16 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMENT "Copying bundled fonts to output directory"
 )
 
+if(WIN32)
 source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/src" PREFIX "Source Files" FILES
     ${TOOLSCREEN_SOURCES}
     ${TOOLSCREEN_HEADERS}
     ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/resource.rc
 )
 source_group("Generated Files" FILES ${TOOLSCREEN_GENERATED_VERSION_HEADER})
+endif()
 
+if(WIN32)
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${TOOLSCREEN_GENERATED_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -403,10 +500,76 @@ if(MSVC)
         /bigobj
     )
 endif()
+else()
+# Linux target configuration
+target_include_directories(${PROJECT_NAME} PRIVATE
+    ${TOOLSCREEN_GENERATED_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/platform
+    ${X11_INCLUDE_DIRS}
+    ${nlohmann_json_SOURCE_DIR}/single_include
+    ${cpp_httplib_SOURCE_DIR}
+)
 
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    CMAKE_BUILD
+    GLEW_STATIC
+    NOMINMAX
+    PLATFORM_LINUX
+)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE
+    Toolscreen::glew
+    toolscreen_imgui
+    OpenGL::GL
+    X11::X11
+    Xext
+    Xi
+    Xfixes
+    Xcursor
+    Xrandr
+    Xinerama
+    ${CMAKE_DL_LIBS}
+    pthread
+    z
+)
+
+target_compile_options(${PROJECT_NAME} PRIVATE
+    -Wall -Wextra
+    -Wno-unused-parameter
+    -Wno-missing-field-initializers
+    -fvisibility=hidden
+    -fPIC
+    $<$<CONFIG:Debug>:-g -O0>
+    $<$<CONFIG:Release>:-O2 -DNDEBUG>
+)
+
+target_link_options(${PROJECT_NAME} PRIVATE
+    $<$<CONFIG:Release>:-Wl,--strip-all>
+)
+
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    OUTPUT_NAME "toolscreen"
+    PREFIX "lib"
+    SUFFIX ".so"
+    C_VISIBILITY_PRESET hidden
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+)
+endif()
+
+if(WIN32)
 toolscreen_configure_target_outputs(${PROJECT_NAME})
 toolscreen_enable_release_symbols(${PROJECT_NAME})
+else()
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+    LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/bin"
+    LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/bin"
+)
+endif()
 
+if(WIN32)
 set(TOOLSCREEN_LIBLOGGER_ARTIFACT_DLL_PATH "${TOOLSCREEN_ARTIFACT_ROOT}/$<CONFIG>/liblogger_x64.dll")
 set(TOOLSCREEN_LIBLOGGER_ARTIFACT_PDB_PATH "${TOOLSCREEN_ARTIFACT_ROOT}/$<CONFIG>/liblogger_x64.pdb")
 set(TOOLSCREEN_LIBLOGGER_BUILD_DEPENDENCY "")
@@ -1358,4 +1521,6 @@ foreach(test_case IN LISTS TOOLSCREEN_GAME_STATE_SOURCE_TEST_CASES)
         COMMAND $<TARGET_FILE:toolscreen_game_state_source_tests> --run ${test_case}
     )
 endforeach()
+
+endif() # WIN32 (liblogger + packaging + tests)
 

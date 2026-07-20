@@ -1,11 +1,14 @@
 *
 !.gitignore
 !CMakeLists.txt
+!CMakeLists_Linux.txt
 !CMakePresets.json
 !LICENSE
 !README.md
 !ToolscreenVersion.cmake
 !build.bat
+!build_linux.sh
+!CLAUDE.md
 !scripts/
 !scripts/verify_pe_metadata.ps1
 !scripts/**

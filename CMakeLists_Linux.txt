@@ -1,0 +1,252 @@
+# Toolscreen Linux CMake build
+# Usage: cmake -B build -DCMAKE_BUILD_TYPE=Release -P CMakeLists_Linux.txt
+#   or:  cmake -B build -DCMAKE_BUILD_TYPE=Release
+#        cmake --build build
+
+cmake_minimum_required(VERSION 3.21)
+project(Toolscreen VERSION 1.4.4 LANGUAGES C CXX)
+
+# ---- C++ Standard ----
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+# ---- Build type ----
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
+
+# ---- Version ----
+include("${CMAKE_CURRENT_SOURCE_DIR}/ToolscreenVersion.cmake")
+set(TOOLSCREEN_VERSION "${TOOLSCREEN_VERSION_MAJOR}.${TOOLSCREEN_VERSION_MINOR}.${TOOLSCREEN_VERSION_PATCH}")
+
+# Generated version header
+set(TOOLSCREEN_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+set(TOOLSCREEN_GENERATED_VERSION_HEADER "${TOOLSCREEN_GENERATED_DIR}/version.h")
+file(MAKE_DIRECTORY "${TOOLSCREEN_GENERATED_DIR}")
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/common/version.h.in"
+    "${TOOLSCREEN_GENERATED_VERSION_HEADER}"
+    @ONLY
+)
+
+# ---- Find packages ----
+find_package(OpenGL REQUIRED)
+find_package(X11 REQUIRED)
+find_package(PkgConfig QUIET)
+
+# X11 extension libraries
+set(X11_Xext_LIB Xext)
+set(X11_Xi_LIB Xi)
+set(X11_Xfixes_LIB Xfixes)
+set(X11_Xcursor_LIB Xcursor)
+set(X11_Xrandr_LIB Xrandr)
+set(X11_Xinerama_LIB Xinerama)
+set(X11_Xxf86vm_LIB Xxf86vm)
+
+# ---- FetchContent dependencies ----
+include(FetchContent)
+
+# GLEW
+FetchContent_Declare(
+    glew
+    URL https://github.com/nigels-com/glew/releases/download/glew-2.2.0/glew-2.2.0.zip
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+)
+FetchContent_GetProperties(glew)
+if(NOT glew_POPULATED)
+    FetchContent_Populate(glew)
+    add_library(toolscreen_glew STATIC
+        ${glew_SOURCE_DIR}/src/glew.c
+    )
+    target_include_directories(toolscreen_glew PUBLIC ${glew_SOURCE_DIR}/include)
+    target_compile_definitions(toolscreen_glew PUBLIC GLEW_STATIC GLEW_NO_GLU)
+    set_target_properties(toolscreen_glew PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        OUTPUT_NAME "libtoolscreen_glew"
+    )
+endif()
+
+# ImGui
+FetchContent_Declare(
+    imgui
+    GIT_REPOSITORY https://github.com/ocornut/imgui
+    GIT_TAG v1.92.6
+    GIT_SHALLOW TRUE
+)
+FetchContent_GetProperties(imgui)
+if(NOT imgui_POPULATED)
+    FetchContent_Populate(imgui)
+    set(TOOLSCREEN_IMGUI_DIR "${imgui_SOURCE_DIR}")
+    add_library(toolscreen_imgui STATIC
+        ${TOOLSCREEN_IMGUI_DIR}/imgui.cpp
+        ${TOOLSCREEN_IMGUI_DIR}/imgui_draw.cpp
+        ${TOOLSCREEN_IMGUI_DIR}/imgui_tables.cpp
+        ${TOOLSCREEN_IMGUI_DIR}/imgui_widgets.cpp
+        ${TOOLSCREEN_IMGUI_DIR}/imgui_demo.cpp
+        ${TOOLSCREEN_IMGUI_DIR}/misc/cpp/imgui_stdlib.cpp
+        ${TOOLSCREEN_IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
+        ${TOOLSCREEN_IMGUI_DIR}/backends/imgui_impl_glfw.cpp
+    )
+    target_include_directories(toolscreen_imgui PUBLIC
+        ${TOOLSCREEN_IMGUI_DIR}
+        ${TOOLSCREEN_IMGUI_DIR}/backends
+        ${TOOLSCREEN_IMGUI_DIR}/misc/cpp
+    )
+    target_compile_definitions(toolscreen_imgui PUBLIC
+        IMGUI_IMPL_OPENGL_LOADER_GLEW
+        IMGUI_DISABLE_OBSOLETE_FUNCTIONS
+    )
+    target_link_libraries(toolscreen_imgui PUBLIC
+        toolscreen_glew
+        OpenGL::GL
+    )
+    set_target_properties(toolscreen_imgui PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        OUTPUT_NAME "libtoolscreen_imgui"
+    )
+endif()
+
+# nlohmann_json (header-only)
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json
+    GIT_TAG v3.12.0
+    GIT_SHALLOW TRUE
+)
+FetchContent_GetProperties(nlohmann_json)
+if(NOT nlohmann_json_POPULATED)
+    FetchContent_Populate(nlohmann_json)
+endif()
+
+# cpp-httplib (header-only)
+FetchContent_Declare(
+    cpp_httplib
+    GIT_REPOSITORY https://github.com/yhirose/cpp-httplib
+    GIT_TAG v0.40.0
+    GIT_SHALLOW TRUE
+)
+FetchContent_GetProperties(cpp_httplib)
+if(NOT cpp_httplib_POPULATED)
+    FetchContent_Populate(cpp_httplib)
+endif()
+
+# ---- Source files ----
+set(TOOLSCREEN_MODULE_DIRS
+    # Platform abstractions
+    platform
+    platform/linux
+    # Bootstrap (Linux entry)
+    bootstrap
+    # Shared modules (cross-platform)
+    common
+    config
+    features
+    gui
+    gui/tabs
+    hooks
+    render
+    runtime
+    third_party
+)
+
+set(TOOLSCREEN_SOURCES)
+set(TOOLSCREEN_HEADERS)
+
+# Gather all .cpp and .h files
+foreach(module_dir IN LISTS TOOLSCREEN_MODULE_DIRS)
+    file(GLOB module_sources CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/${module_dir}/*.cpp"
+    )
+    file(GLOB module_headers CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/${module_dir}/*.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/${module_dir}/*.inl"
+    )
+    list(APPEND TOOLSCREEN_SOURCES ${module_sources})
+    list(APPEND TOOLSCREEN_HEADERS ${module_headers})
+endforeach()
+
+# Remove Windows-specific files from the build
+list(FILTER TOOLSCREEN_SOURCES EXCLUDE REGEX "dllmain\\.cpp$")
+list(FILTER TOOLSCREEN_SOURCES EXCLUDE REGEX "resource\\.rc$")
+
+list(REMOVE_DUPLICATES TOOLSCREEN_SOURCES)
+list(REMOVE_DUPLICATES TOOLSCREEN_HEADERS)
+
+# ---- Build shared library ----
+add_library(toolscreen SHARED
+    ${TOOLSCREEN_SOURCES}
+    ${TOOLSCREEN_HEADERS}
+    ${TOOLSCREEN_GENERATED_VERSION_HEADER}
+)
+
+target_include_directories(toolscreen PRIVATE
+    ${TOOLSCREEN_GENERATED_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${nlohmann_json_SOURCE_DIR}/single_include
+    ${cpp_httplib_SOURCE_DIR}
+    ${X11_INCLUDE_DIRS}
+)
+
+target_compile_definitions(toolscreen PRIVATE
+    CMAKE_BUILD
+    GLEW_STATIC
+    NOMINMAX
+    PLATFORM_LINUX
+)
+
+target_link_libraries(toolscreen PRIVATE
+    toolscreen_imgui
+    toolscreen_glew
+    OpenGL::GL
+    X11::X11
+    ${X11_Xext_LIB}
+    ${X11_Xi_LIB}
+    ${X11_Xfixes_LIB}
+    ${X11_Xcursor_LIB}
+    ${X11_Xrandr_LIB}
+    ${X11_Xinerama_LIB}
+    ${CMAKE_DL_LIBS}
+    pthread
+    z
+)
+
+# Compiler flags
+target_compile_options(toolscreen PRIVATE
+    -Wall -Wextra
+    -Wno-unused-parameter
+    -Wno-missing-field-initializers
+    -fvisibility=hidden
+    -fPIC
+    $<$<CONFIG:Debug>:-g -O0>
+    $<$<CONFIG:Release>:-O2 -DNDEBUG>
+    $<$<CONFIG:RelWithDebInfo>:-O2 -g>
+)
+
+# Linker flags
+target_link_options(toolscreen PRIVATE
+    $<$<CONFIG:Release>:-Wl,--strip-all>
+    $<$<CONFIG:Debug>:-Wl,--no-strip>
+)
+
+# Set output name and location
+set_target_properties(toolscreen PROPERTIES
+    OUTPUT_NAME "toolscreen"
+    PREFIX "lib"
+    SUFFIX ".so"
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+    LIBRARY_OUTPUT_DIRECTORY_DEBUG "${CMAKE_BINARY_DIR}/bin"
+    LIBRARY_OUTPUT_DIRECTORY_RELEASE "${CMAKE_BINARY_DIR}/bin"
+    C_VISIBILITY_PRESET hidden
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+)
+
+# Show summary
+message(STATUS "===== Toolscreen Linux Build =====")
+message(STATUS "Version:     ${TOOLSCREEN_VERSION}")
+message(STATUS "Build type:  ${CMAKE_BUILD_TYPE}")
+message(STATUS "Compiler:    ${CMAKE_CXX_COMPILER}")
+message(STATUS "Output:      ${CMAKE_BINARY_DIR}/bin/libtoolscreen.so")
+message(STATUS "==================================")
