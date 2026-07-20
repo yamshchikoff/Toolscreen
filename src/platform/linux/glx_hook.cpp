@@ -16,6 +16,8 @@
 #include "common/profiler.h"
 
 #ifdef PLATFORM_LINUX
+// Lazy init from linux_main.cpp (avoids X11 in constructor)
+extern void ToolscreenLazyInit();
 #include <GL/glx.h>
 #include <cstdio>
 #include <cstring>
@@ -370,6 +372,9 @@ void glBlitFramebuffer(GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1,
 
 void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     PROFILE_SCOPE("glXSwapBuffers");
+
+    // Deferred initialization — avoids conflicts with Java classloaders
+    ToolscreenLazyInit();
 
     // Lazy GLEW initialization on first call (requires an active GL context,
     // so we must do it here — not in Initialize()).

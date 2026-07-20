@@ -340,45 +340,47 @@ void StopThreads() {
 
 // ---- Module entry/exit points ----
 
+// Lazy initialization flag — defer all X11/GL work until first glXSwapBuffers call.
+// This avoids conflicts with Java classloaders (Fabric, Forge) that trigger
+// during dlopen when the JVM is not yet ready for X11 connections.
+static std::once_flag g_lazyInitFlag;
+
+void ToolscreenLazyInit() {
+    std::call_once(g_lazyInitFlag, []() {
+        fprintf(stderr, "[Toolscreen] Lazy init triggered\n");
+
+        XInitThreads();
+        SharedInit::InstallExceptionHandlers();
+
+        if (!InitPlatform()) {
+            fprintf(stderr, "[Toolscreen] Platform init failed, Toolscreen disabled\n");
+            return;
+        }
+
+        if (!InitLogger()) {
+            fprintf(stderr, "[Toolscreen] Logger init failed\n");
+            return;
+        }
+
+        if (!InitGLHook()) {
+            fprintf(stderr, "[Toolscreen] GL hook init failed\n");
+            return;
+        }
+
+        SharedInit::InitConfig(g_config, Platform::GetModuleDirectory());
+        LoadToolscreenConfig();
+        StartThreads();
+        g_initialized.store(true);
+        fprintf(stderr, "[Toolscreen] Initialization complete\n");
+    });
+}
+
 // __attribute__((constructor)) runs when the .so is loaded (before main())
 // This is the Linux equivalent of DllMain(DLL_PROCESS_ATTACH)
+// Note: we do NOT open X11 or GL here — that happens lazily on first frame.
 extern "C" __attribute__((constructor))
 void ToolscreenLinuxInit() {
     fprintf(stderr, "[Toolscreen] libtoolscreen.so loaded (constructor)\n");
-
-    // Phase 0: Thread-safety for X11 (must be first X11 call)
-    XInitThreads();
-
-    // Phase 0.5: Exception handlers (signals on Linux)
-    SharedInit::InstallExceptionHandlers();
-
-    // Phase 1: Platform initialization
-    if (!InitPlatform()) {
-        fprintf(stderr, "[Toolscreen] Platform init failed, Toolscreen disabled\n");
-        return;
-    }
-
-    // Phase 2: Logger
-    if (!InitLogger()) {
-        fprintf(stderr, "[Toolscreen] Logger init failed\n");
-        return;
-    }
-
-    // Phase 3: GL hooks
-    if (!InitGLHook()) {
-        fprintf(stderr, "[Toolscreen] GL hook init failed\n");
-        return;
-    }
-
-    // Phase 4: Config
-    SharedInit::InitConfig(g_config, Platform::GetModuleDirectory());
-    LoadToolscreenConfig();
-
-    // Phase 5: Start background threads
-    StartThreads();
-
-    g_initialized.store(true);
-    fprintf(stderr, "[Toolscreen] Initialization complete\n");
 }
 
 // __attribute__((destructor)) runs when the .so is unloaded

@@ -24,24 +24,36 @@ echo "Найден PID: $PID"
 echo "Внедряю $SO..."
 
 # Проверяем доступность ptrace
-if ! gdb --batch -ex "q" --pid "$PID" 2>/dev/null; then
-    echo "Ошибка: нет доступа к процессу (ptrace)."
-    echo "Отключи ограничения:"
-    echo "  sudo sysctl -w kernel.yama.ptrace_scope=0"
-    echo "Или запусти через sudo:"
-    echo "  sudo $0"
-    exit 1
+PTRACE_OK=0
+gdb --batch -ex "q" --pid "$PID" 2>/dev/null && PTRACE_OK=1
+
+if [ "$PTRACE_OK" -eq 0 ]; then
+    echo "ptrace ограничен. Включаю..."
+    if sudo sysctl -w kernel.yama.ptrace_scope=0 2>/dev/null; then
+        echo "ptrace разблокирован (до перезагрузки)"
+    else
+        echo "Запускаю инжектор с sudo..."
+        sudo "$0" "$@"
+        exit $?
+    fi
 fi
 
 # Инжект через gdb: dlopen с флагом RTLD_NOW
-gdb --pid "$PID" \
+RESULT=$(gdb --pid "$PID" \
     -batch \
     -ex "call (void*)dlopen(\"$SO\", 2)" \
     -ex "detach" \
-    -ex "quit" 2>&1 | grep -v "^$\|Reading symbols\|debuginfo\|(gdb)\|Detaching"
+    -ex "quit" 2>&1)
+
+if echo "$RESULT" | grep -q "0x"; then
+    echo "Внедрение успешно! Хэндл: $(echo "$RESULT" | grep '= (void')"
+elif echo "$RESULT" | grep -q "No such file"; then
+    echo "Ошибка: .so не найден процессом Minecraft. Проверь путь."
+    exit 1
+else
+    echo "Результат gdb:"
+    echo "$RESULT" | tail -3
+fi
 
 echo ""
-echo "Готово. Проверь лог: grep Toolscreen ~/toolscreen.log"
-echo ""
-echo "Если GLEW не инициализировался — открой мир в Minecraft,"
-echo ".so активируется при создании GL-контекста."
+echo "Лог: grep Toolscreen ~/toolscreen.log (пишет в stderr игры)"
