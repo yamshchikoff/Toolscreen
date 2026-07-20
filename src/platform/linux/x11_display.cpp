@@ -46,12 +46,15 @@ int X11ErrorHandler(Display* dpy, XErrorEvent* ev) {
 }
 
 // Custom I/O error handler (connection lost — must NOT return per X11 spec)
-// Default Xlib I/O handler calls exit(1), killing the host process.
-// Per the X11 specification, an I/O error handler MUST NOT return —
-// doing so is undefined behavior and can crash the host application.
+// Chains to the previously-installed handler so other libraries (LWJGL, etc.)
+// get a chance to handle the disconnection before we resort to _exit.
 int X11IOErrorHandler(Display* dpy) {
     fprintf(stderr, "[Toolscreen] X11 I/O error: connection to X server lost\n");
-    _exit(1); // Required by X11 spec: I/O error handlers must not return
+    // Chain to previous handler — may longjmp or otherwise recover
+    if (g_oldIOErrorHandler && g_oldIOErrorHandler != X11IOErrorHandler) {
+        return g_oldIOErrorHandler(dpy);
+    }
+    _exit(1); // No previous handler — required by X11 spec: I/O error handlers must not return
 }
 
 // Map X11 KeySym to canonical Windows VK
@@ -198,6 +201,7 @@ void Close() {
     if (!g_display) return;
 
     XSetErrorHandler(g_oldErrorHandler);
+    XSetIOErrorHandler(g_oldIOErrorHandler);
     XCloseDisplay(g_display);
     g_display = nullptr;
     g_initialized.store(false);

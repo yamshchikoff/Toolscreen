@@ -140,12 +140,16 @@ bool CaptureScreen(int x, int y, int w, int h,
             goto fallback;
         }
 
-        shmInfo.shmaddr = image->data = static_cast<char*>(shmat(shmInfo.shmid, nullptr, 0));
-        if (shmInfo.shmaddr == reinterpret_cast<void*>(-1)) {
+        char* shmAddr = static_cast<char*>(shmat(shmInfo.shmid, nullptr, 0));
+        if (shmAddr == reinterpret_cast<void*>(-1)) {
+            // image->data is still nullptr — safe to destroy (XDestroyImage
+            // with null data is harmless per X11 spec)
             XDestroyImage(image);
             shmctl(shmInfo.shmid, IPC_RMID, nullptr);
             goto fallback;
         }
+        // Only assign data after successful shmat (avoid dangling pointer on failure)
+        shmInfo.shmaddr = image->data = shmAddr;
         // Mark segment for deletion early — Linux defers until last detach
         shmctl(shmInfo.shmid, IPC_RMID, nullptr);
         shmInfo.readOnly = False;

@@ -49,6 +49,14 @@ namespace {
 // ---- Inline hook engine (kept for potential future non-GL use) ----
 // Replaces the core MinHook functionality using mprotect + trampolines.
 // x86-64 only: installs a 14-byte absolute jump: mov rax, imm64; jmp rax
+//
+// WARNING: This engine is NOT safe for multithreaded code. The mprotect +
+// memcpy sequence can tear instructions while another thread executes the
+// same page, causing SIGILL or undefined behaviour. It is deliberately NOT
+// used for GL/GLX functions — those are intercepted via LD_PRELOAD symbol
+// interposition (see extern "C" blocks below).
+// Only use CreateHook/EnableHook for functions known to be single-threaded
+// or during process startup before other threads are active.
 
 struct HookEntry {
     void* target;
@@ -347,14 +355,22 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
 
     // Lazy GLEW initialization on first call (requires an active GL context,
     // so we must do it here — not in Initialize()).
-    // TODO: If the game recreates its GL context (e.g. fullscreen ↔ windowed
-    // toggle), g_glewReady stays true but GLEW function pointers point to the
-    // old (destroyed) context. Detect context change and reset g_glewReady.
+    // Detect GL context change (e.g. fullscreen ↔ windowed toggle in Minecraft)
+    // and reinitialize GLEW so function pointers point to the current context.
+    static GLXContext s_glewContext = nullptr;
+    GLXContext currentCtx = glXGetCurrentContext();
+    bool contextChanged = (currentCtx != s_glewContext);
+    if (contextChanged) {
+        g_glewReady.store(false, std::memory_order_release);
+        s_glewContext = currentCtx;
+    }
     if (!g_glewReady.load(std::memory_order_acquire)) {
         GLenum glewErr = glewInit();
         if (glewErr == GLEW_OK) {
             g_glewReady.store(true, std::memory_order_release);
-            fprintf(stderr, "[Toolscreen] GLEW initialized OK\n");
+            s_glewContext = glXGetCurrentContext();
+            fprintf(stderr, "[Toolscreen] GLEW initialized OK (context %p)\n",
+                    reinterpret_cast<void*>(s_glewContext));
         } else {
             fprintf(stderr, "[Toolscreen] GLEW init failed: %s\n",
                     reinterpret_cast<const char*>(glewGetErrorString(glewErr)));
