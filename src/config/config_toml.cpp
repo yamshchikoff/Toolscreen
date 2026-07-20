@@ -618,7 +618,7 @@ GradientAnimationType StringToGradientAnimationType(const std::string& str) {
     if (str == "Wave") return GradientAnimationType::Wave;
     if (str == "Spiral") return GradientAnimationType::Spiral;
     if (str == "Fade") return GradientAnimationType::Fade;
-    return GradientAnimationType::None;
+    return GradientAnimationType::NoGradient;
 }
 
 void GradientConfigToToml(const GradientConfig& cfg, toml::table& out) {

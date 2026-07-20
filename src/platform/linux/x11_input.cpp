@@ -36,7 +36,8 @@ bool EnsureXTestAvailable() {
         Display* dpy = X11Display::Get();
         if (!dpy) { g_xtestAvailable.store(false); return; }
         int major, minor;
-        bool available = XTestQueryExtension(dpy, &major, &minor, nullptr, nullptr, nullptr);
+        int evBase, errBase;
+        bool available = XTestQueryExtension(dpy, &evBase, &errBase, &major, &minor);
         g_xtestAvailable.store(available, std::memory_order_release);
         if (!available) {
             fprintf(stderr, "[Toolscreen] XTEST unavailable — synthetic input disabled\n");

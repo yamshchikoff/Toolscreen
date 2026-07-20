@@ -2,6 +2,11 @@
 #define _GNU_SOURCE  // For RTLD_NEXT
 #endif
 
+#ifdef PLATFORM_LINUX
+// GLEW must be first GL header — before glx_hook.h (which pulls <GL/glx.h> → <GL/gl.h>)
+#include <GL/glew.h>
+#endif
+
 #include "glx_hook.h"
 #include "x11_display.h"
 #include "platform/linux/x11_input.h"
@@ -9,8 +14,6 @@
 #include "common/profiler.h"
 
 #ifdef PLATFORM_LINUX
-
-#include <GL/glew.h>
 #include <GL/glx.h>
 #include <cstdio>
 #include <cstring>

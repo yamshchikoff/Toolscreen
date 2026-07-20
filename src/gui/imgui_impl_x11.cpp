@@ -5,6 +5,8 @@
 #include "imgui.h"
 // imgui.h #undefs X11 Status macro — restore as typedef for X11 headers below
 typedef int Status;
+// GLEW must be included before <GL/glx.h> (pulled by x11_display.h)
+#include <GL/glew.h>
 #include "platform/linux/x11_display.h"
 #include <X11/Xlib.h>
 #include <X11/keysym.h>

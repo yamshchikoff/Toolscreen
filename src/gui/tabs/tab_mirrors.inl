@@ -690,7 +690,7 @@ if (BeginSelectableSettingsNestedTabItem(trc("tabs.mirrors"))) {
                         syncMirrorCaptureSettings();
                     }
 
-                    if (mirror.gradient.gradientAnimation != GradientAnimationType::None) {
+                    if (mirror.gradient.gradientAnimation != GradientAnimationType::NoGradient) {
                         mirrorSettingsRowLabel(trc("modes.gradient_animation_speed"));
                         if (ImGui::SliderFloat("##MirrorGradAnimSpeed", &mirror.gradient.gradientAnimationSpeed, 0.1f, 5.0f, "%.1fx")) {
                             g_configIsDirty = true;

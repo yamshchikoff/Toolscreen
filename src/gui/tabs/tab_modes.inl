@@ -1160,7 +1160,7 @@ if (BeginSelectableSettingsTopTabItem(trc("tabs.modes"))) {
                             mode.background.gradientAnimation = static_cast<GradientAnimationType>(currentAnimType);
                             g_configIsDirty = true;
                         }
-                        if (mode.background.gradientAnimation != GradientAnimationType::None) {
+                        if (mode.background.gradientAnimation != GradientAnimationType::NoGradient) {
                             ImGui::SetNextItemWidth(150);
                             if (ImGui::SliderFloat((tr("modes.gradient_animation_speed") + "##GradAnimSpeed").c_str(), &mode.background.gradientAnimationSpeed, 0.1f, 5.0f, "%.1fx")) {
                                 g_configIsDirty = true;
@@ -1458,7 +1458,7 @@ if (BeginSelectableSettingsTopTabItem(trc("tabs.modes"))) {
                             mode.background.gradientAnimation = static_cast<GradientAnimationType>(currentAnimType);
                             g_configIsDirty = true;
                         }
-                        if (mode.background.gradientAnimation != GradientAnimationType::None) {
+                        if (mode.background.gradientAnimation != GradientAnimationType::NoGradient) {
                             ImGui::SetNextItemWidth(150);
                             if (ImGui::SliderFloat((tr("modes.gradient_animation_speed") + "##GradAnimSpeedPreemptive").c_str(), &mode.background.gradientAnimationSpeed, 0.1f, 5.0f,
                                                    "%.1fx")) {
@@ -1796,7 +1796,7 @@ if (BeginSelectableSettingsTopTabItem(trc("tabs.modes"))) {
                             mode.background.gradientAnimation = static_cast<GradientAnimationType>(currentAnimTypeThin);
                             g_configIsDirty = true;
                         }
-                        if (mode.background.gradientAnimation != GradientAnimationType::None) {
+                        if (mode.background.gradientAnimation != GradientAnimationType::NoGradient) {
                             ImGui::SetNextItemWidth(150);
                             if (ImGui::SliderFloat((tr("modes.gradient_animation_speed") + "##GradAnimSpeedThin").c_str(), &mode.background.gradientAnimationSpeed, 0.1f, 5.0f, "%.1fx")) {
                                 g_configIsDirty = true;
@@ -2105,7 +2105,7 @@ if (BeginSelectableSettingsTopTabItem(trc("tabs.modes"))) {
                             mode.background.gradientAnimation = static_cast<GradientAnimationType>(currentAnimTypeWide);
                             g_configIsDirty = true;
                         }
-                        if (mode.background.gradientAnimation != GradientAnimationType::None) {
+                        if (mode.background.gradientAnimation != GradientAnimationType::NoGradient) {
                             ImGui::SetNextItemWidth(150);
                             if (ImGui::SliderFloat((tr("modes.gradient_animation_speed") + "##GradAnimSpeedWide").c_str(), &mode.background.gradientAnimationSpeed, 0.1f, 5.0f, "%.1fx")) {
                                 g_configIsDirty = true;
@@ -2533,7 +2533,7 @@ if (BeginSelectableSettingsTopTabItem(trc("tabs.modes"))) {
                             mode.background.gradientAnimation = static_cast<GradientAnimationType>(currentAnimTypeCustom);
                             g_configIsDirty = true;
                         }
-                        if (mode.background.gradientAnimation != GradientAnimationType::None) {
+                        if (mode.background.gradientAnimation != GradientAnimationType::NoGradient) {
                             ImGui::SetNextItemWidth(150);
                             if (ImGui::SliderFloat((tr("modes.gradient_animation_speed") + gradId).c_str(), &mode.background.gradientAnimationSpeed, 0.1f, 5.0f, "%.1fx")) {
                                 g_configIsDirty = true;

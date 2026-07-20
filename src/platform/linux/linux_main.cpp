@@ -6,6 +6,7 @@
 
 #ifdef PLATFORM_LINUX
 
+#include <GL/glew.h>
 #include "platform/linux/x11_display.h"
 #include "platform/linux/glx_hook.h"
 #include "platform/linux/x11_input.h"
@@ -67,7 +68,7 @@ bool InitLogger() {
     return true;
 }
 
-bool LoadConfig() {
+bool LoadToolscreenConfig() {
     // TODO: Load config from TOML file
     // For now, use embedded defaults
     fprintf(stderr, "[Toolscreen] Config loaded (defaults)\n");
@@ -122,7 +123,7 @@ void ToolscreenLinuxInit() {
 
     // Phase 4: Config
     SharedInit::InitConfig(g_config, Platform::GetModuleDirectory());
-    LoadConfig();
+    LoadToolscreenConfig();
 
     // Phase 5: Start background threads
     StartThreads();

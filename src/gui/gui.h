@@ -154,7 +154,7 @@ extern ImFont* g_keyboardLayoutPrimaryFont;
 extern ImFont* g_keyboardLayoutSecondaryFont;
 
 enum class GradientAnimationType {
-    None,
+    NoGradient,
     Rotate,
     Slide,
     Wave,
@@ -174,7 +174,7 @@ struct GradientConfig {
     };
     float gradientAngle = 0.0f;
 
-    GradientAnimationType gradientAnimation = GradientAnimationType::None;
+    GradientAnimationType gradientAnimation = GradientAnimationType::NoGradient;
     float gradientAnimationSpeed = 1.0f;
     bool gradientColorFade = false;
 };
@@ -187,7 +187,7 @@ struct BackgroundConfig {
     std::vector<GradientColorStop> gradientStops;
     float gradientAngle = 0.0f;
 
-    GradientAnimationType gradientAnimation = GradientAnimationType::None;
+    GradientAnimationType gradientAnimation = GradientAnimationType::NoGradient;
     float gradientAnimationSpeed = 1.0f;
     bool gradientColorFade = false;
 };

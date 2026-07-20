@@ -1087,7 +1087,7 @@ namespace Vk {
     inline void* FindResourceW(HMODULE, const wchar_t*, const wchar_t*) { return nullptr; }
     inline void* LoadResource(HMODULE, void*) { return nullptr; }
     inline unsigned long SizeofResource(HMODULE, void*) { return 0; }
-    inline const void* LockResource(void*) { return nullptr; }
+    inline void* LockResource(void*) { return nullptr; }
 
     // ImGui API compatibility (v1.92.6 breaking changes)
     // These #defines are temporary workarounds; the code should be migrated properly.
