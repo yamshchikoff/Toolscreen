@@ -1,5 +1,6 @@
 #include "x11_input.h"
 #include "x11_display.h"
+#include "x11_cursor.h"
 
 #ifdef PLATFORM_LINUX
 
@@ -190,6 +191,13 @@ void SendKeyDown(uint32_t vkCode) {
     Display* dpy = X11Display::Get();
     if (!dpy || !g_gameWindow) return;
 
+    // Check XTEST availability
+    int xtestMajor, xtestMinor;
+    if (!XTestQueryExtension(dpy, &xtestMajor, &xtestMinor, nullptr, nullptr, nullptr)) {
+        fprintf(stderr, "[Toolscreen] XTEST extension not available — synthetic input disabled\n");
+        return;
+    }
+
     KeySym ks = X11Display::VkToX11Keysym(vkCode);
     if (ks == NoSymbol) return;
 
@@ -203,6 +211,9 @@ void SendKeyDown(uint32_t vkCode) {
 void SendKeyUp(uint32_t vkCode) {
     Display* dpy = X11Display::Get();
     if (!dpy || !g_gameWindow) return;
+
+    int xtestMajor, xtestMinor;
+    if (!XTestQueryExtension(dpy, &xtestMajor, &xtestMinor, nullptr, nullptr, nullptr)) return;
 
     KeySym ks = X11Display::VkToX11Keysym(vkCode);
     if (ks == NoSymbol) return;
@@ -248,24 +259,9 @@ void SetCursorPos(int x, int y) {
 }
 
 void ShowCursor(bool show) {
-    Display* dpy = X11Display::Get();
-    if (!dpy || !g_gameWindow) return;
-
-    if (show) {
-        XUndefineCursor(dpy, g_gameWindow);
-    } else {
-        // Create invisible cursor
-        static Cursor invisibleCursor = 0;
-        if (!invisibleCursor) {
-            Pixmap blank = XCreatePixmap(dpy, g_gameWindow, 1, 1, 1);
-            XColor dummy;
-            invisibleCursor = XCreatePixmapCursor(dpy, blank, blank, &dummy, &dummy, 0, 0);
-            XFreePixmap(dpy, blank);
-        }
-        XDefineCursor(dpy, g_gameWindow, invisibleCursor);
-    }
+    // Delegate to X11Cursor to avoid duplicate invisible cursor
+    X11Cursor::ShowCursor(show);
     g_cursorVisible.store(show);
-    X11Display::Flush();
 }
 
 // ---- X11 event conversion helpers ----

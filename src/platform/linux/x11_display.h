@@ -55,9 +55,6 @@ Display* GetCurrentDisplay();
 // Check if we're on the game's render thread
 bool IsOnRenderThread();
 
-// Set an X11 error handler
-void SetErrorHandler(std::function<int(Display*, XErrorEvent*)> handler);
-
 // Flush pending X11 commands
 void Flush();
 

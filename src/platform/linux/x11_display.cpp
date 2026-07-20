@@ -31,13 +31,22 @@ std::atomic<uint64_t> g_renderThreadId{0};
 
 // Previous X11 error handler for chaining
 int (*g_oldErrorHandler)(Display*, XErrorEvent*) = nullptr;
+int (*g_oldIOErrorHandler)(Display*) = nullptr;
 
-// Custom error handler
+// Custom error handler (non-fatal errors — log and continue)
 int X11ErrorHandler(Display* dpy, XErrorEvent* ev) {
     char buffer[256];
     XGetErrorText(dpy, ev->error_code, buffer, sizeof(buffer));
     fprintf(stderr, "[Toolscreen] X11 error: %s (code=%d, opcode=%d, resource=%lu)\n",
             buffer, ev->error_code, ev->request_code, ev->resourceid);
+    return 0;
+}
+
+// Custom I/O error handler (connection lost — log and return instead of exit())
+// Default Xlib I/O handler calls exit(1), killing the host process.
+int X11IOErrorHandler(Display* dpy) {
+    fprintf(stderr, "[Toolscreen] X11 I/O error: connection to X server lost\n");
+    // Don't call exit() — let the application handle the disconnection
     return 0;
 }
 
@@ -169,8 +178,9 @@ bool Open() {
     g_root = RootWindow(g_display, g_screen);
     g_renderThreadId.store(Platform::GetCurrentThreadId());
 
-    // Set error handler
+    // Set error handlers
     g_oldErrorHandler = XSetErrorHandler(X11ErrorHandler);
+    g_oldIOErrorHandler = XSetIOErrorHandler(X11IOErrorHandler);
 
     g_initialized.store(true);
     return true;

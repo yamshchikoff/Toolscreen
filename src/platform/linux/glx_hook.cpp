@@ -1,3 +1,7 @@
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE  // For RTLD_NEXT
+#endif
+
 #include "glx_hook.h"
 #include "x11_display.h"
 #include "common/profiler.h"
@@ -18,7 +22,7 @@
 namespace GLXHook {
 
 // ---- Original function pointers ----
-SwapBuffersFunc g_realSwapBuffers = nullptr;
+std::atomic<SwapBuffersFunc> g_realSwapBuffers{nullptr};
 ViewportFunc g_realViewport = nullptr;
 BindTextureFunc g_realBindTexture = nullptr;
 BindFramebufferFunc g_realBindFramebuffer = nullptr;
@@ -121,8 +125,6 @@ void* CreateTrampoline(void* target, const uint8_t* backup, size_t backupSize) {
     return tramp;
 }
 
-std::atomic<int> g_hookDepth{0}; // Re-entrancy guard for inline hooks
-
 } // namespace
 
 bool CreateHook(void* target, void* detour, void** original) {
@@ -166,6 +168,7 @@ bool CreateHook(void* target, void* detour, void** original) {
 }
 
 bool EnableHook(void* hook) {
+    std::lock_guard<std::mutex> lock(g_hookMutex);
     auto it = g_hooks.find(hook);
     if (it == g_hooks.end()) return false;
     it->second.enabled = true;
@@ -173,6 +176,7 @@ bool EnableHook(void* hook) {
 }
 
 bool DisableHook(void* hook) {
+    std::lock_guard<std::mutex> lock(g_hookMutex);
     auto it = g_hooks.find(hook);
     if (it == g_hooks.end()) return false;
     it->second.enabled = false;
@@ -208,18 +212,18 @@ void glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     if (swapDepth > 0) {
         // If we're already inside our swap handler and something calls swap again,
         // go directly to the real implementation
-        if (g_realSwapBuffers) {
-            g_realSwapBuffers(dpy, drawable);
+        if (g_realSwapBuffers.load()) {
+            g_realSwapBuffers.load()(dpy, drawable);
         }
         return;
     }
     ++swapDepth;
 
     // Resolve the real glXSwapBuffers on first call
-    if (!g_realSwapBuffers) {
-        g_realSwapBuffers = reinterpret_cast<SwapBuffersFunc>(
-            dlsym(RTLD_NEXT, "glXSwapBuffers"));
-        if (!g_realSwapBuffers) {
+    if (!g_realSwapBuffers.load()) {
+        g_realSwapBuffers.store(reinterpret_cast<SwapBuffersFunc>(
+            dlsym(RTLD_NEXT, "glXSwapBuffers")));
+        if (!g_realSwapBuffers.load()) {
             fprintf(stderr, "[Toolscreen] FATAL: Cannot find real glXSwapBuffers\n");
             --swapDepth;
             return;
@@ -233,7 +237,7 @@ void glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     hk_glXSwapBuffers(dpy, drawable);
 
     // Call the real glXSwapBuffers (game frame is presented with our overlays)
-    g_realSwapBuffers(dpy, drawable);
+    g_realSwapBuffers.load()(dpy, drawable);
 
     --swapDepth;
 }
@@ -343,12 +347,13 @@ void hk_glBlitFramebuffer(GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1,
     }
 }
 
-SwapBuffersFunc GetRealSwapBuffers() { return g_realSwapBuffers; }
-bool IsHooked() { return g_realSwapBuffers != nullptr; }
+SwapBuffersFunc GetRealSwapBuffers() { return g_realSwapBuffers.load(); }
+bool IsHooked() { return g_realSwapBuffers.load() != nullptr; }
 
 void CallRealSwapBuffers(Display* dpy, GLXDrawable drawable) {
-    if (g_realSwapBuffers) {
-        g_realSwapBuffers(dpy, drawable);
+    auto* realSwap = g_realSwapBuffers.load();
+    if (realSwap) {
+        realSwap(dpy, drawable);
     }
 }
 

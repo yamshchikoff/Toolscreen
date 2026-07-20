@@ -29,8 +29,10 @@ void ShowCursor(bool show) {
     if (show) {
         XUndefineCursor(dpy, win);
     } else {
-        // Create invisible cursor on first use
+        // Create invisible cursor on first use (mutex-protected against races)
         static Cursor invisibleCursor = 0;
+        static std::mutex cursorMutex;
+        std::lock_guard<std::mutex> lock(cursorMutex);
         if (!invisibleCursor) {
             XColor dummy;
             memset(&dummy, 0, sizeof(dummy));

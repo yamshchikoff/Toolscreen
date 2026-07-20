@@ -5,10 +5,6 @@
 #ifdef PLATFORM_LINUX
 
 #include <GL/glx.h>
-#include <string>
-#include <functional>
-#include <unordered_map>
-#include <vector>
 
 // ---- GLX SwapBuffers hook and GL function interception ----
 
@@ -45,9 +41,6 @@ bool DisableHook(void* hook);
 
 // Enable all created hooks
 bool EnableAllHooks();
-
-// Get the original function pointer for a hooked function name
-void* GetOriginalFunc(const std::string& name);
 
 // Resolve a GL function by name (wraps glXGetProcAddress + dlsym fallback)
 void* GetGLFunc(const char* name);
