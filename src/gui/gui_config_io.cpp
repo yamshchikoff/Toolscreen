@@ -521,7 +521,7 @@ void LoadConfig() {
     }
 
     BackupConfigFile();
-    ExtractBundledFontAssets(std::filesystem::path(g_toolscreenPath), &LoadConfig);
+    ExtractBundledFontAssets(std::filesystem::path(g_toolscreenPath), reinterpret_cast<const void*>(reinterpret_cast<uintptr_t>(&LoadConfig)));
     LoadSystemFontAssets();
 
     try {

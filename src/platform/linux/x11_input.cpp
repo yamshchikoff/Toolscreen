@@ -152,12 +152,12 @@ void PollEvents() {
             valid = true;
             break;
         case FocusIn:
-            inputEv.type = EventType::FocusIn;
+            inputEv.type = EventType::FocusGained;
             inputEv.window = ev.xfocus.window;
             valid = true;
             break;
         case FocusOut:
-            inputEv.type = EventType::FocusOut;
+            inputEv.type = EventType::FocusLost;
             inputEv.window = ev.xfocus.window;
             valid = true;
             // Clear held-key state on focus loss to prevent "sticky" keys
