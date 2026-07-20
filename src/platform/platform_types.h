@@ -841,7 +841,14 @@ namespace Vk {
     #define WM_MBUTTONDOWN 0x207
     #define WM_MBUTTONUP 0x208
     #define WM_XBUTTONDOWN 0x20B
+    #define WM_XBUTTONUP 0x20C
+    #define WM_XBUTTONDBLCLK 0x20D
+    #define WM_LBUTTONDBLCLK 0x203
+    #define WM_RBUTTONDBLCLK 0x206
+    #define WM_MBUTTONDBLCLK 0x209
     #define WM_MOUSEMOVE 0x200
+    #define WM_MOUSELEAVE 0x2A3
+    #define WM_NCMOUSEMOVE 0xA0
     inline int SendMessage(void*, unsigned int, WPARAM, LPARAM) { return 0; }
     inline int QueryFullProcessImageNameA(void*, unsigned long, char*, DWORD*) { return 0; }
 
@@ -956,6 +963,11 @@ namespace Vk {
     #define GET_WHEEL_DELTA_WPARAM(w) ((short)(((w) >> 16) & 0xFFFF))
     #define GET_KEYSTATE_WPARAM(w) ((unsigned short)(w & 0xFFFF))
     #define GET_KEYSTATE_LPARAM(l) ((unsigned short)(l & 0xFFFF))
+    #define GET_X_LPARAM(l) ((short)(l & 0xFFFF))
+    #define GET_Y_LPARAM(l) ((short)(((l) >> 16) & 0xFFFF))
+    inline void* SetCapture(void*) { return nullptr; }
+    inline void* GetCapture() { return nullptr; }
+    inline int ReleaseCapture() { return 1; }
 
     // Additional window stubs
     #define WM_MOUSEACTIVATE 0x21

@@ -10,9 +10,10 @@
 #include <nlohmann/json.hpp>
 #include <thread>
 #include <unordered_map>
+#ifdef _WIN32
 #include <winhttp.h>
-
 #pragma comment(lib, "Winhttp.lib")
+#endif
 
 struct SupporterTierTextureEntry {
     GLuint textureId = 0;
