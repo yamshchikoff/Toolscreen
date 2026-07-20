@@ -55,6 +55,9 @@ BlitFramebufferFunc g_realBlitFramebuffer = nullptr;
 
 namespace {
 
+// Forward declare for inline hook engine (defined after namespace)
+static void HOOK_LOG(const char* fmt, ...) __attribute__((format(printf,1,2)));
+
 // ---- Inline hook engine (kept for potential future non-GL use) ----
 // Replaces the core MinHook functionality using mprotect + trampolines.
 // x86-64 only: installs a 14-byte absolute jump: mov rax, imm64; jmp rax
@@ -109,7 +112,7 @@ void InstallJump(void* target, void* destination, uint8_t* backup) {
     // Make page writable
     size_t span = PageSpan(target, kJumpSize);
     if (mprotect(PageAlign(target), span, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
-        fprintf(stderr, "[Toolscreen] mprotect FAILED for %p: %s\n", target, strerror(errno));
+        HOOK_LOG("[Toolscreen] mprotect FAILED for %p: %s\n", target, strerror(errno));
         return;
     }
 
@@ -132,7 +135,7 @@ void InstallJump(void* target, void* destination, uint8_t* backup) {
 void RestoreJump(void* target, const uint8_t* backup) {
     size_t span = PageSpan(target, kJumpSize);
     if (mprotect(PageAlign(target), span, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
-        fprintf(stderr, "[Toolscreen] mprotect RWX (restore) failed for %p: %s\n", target, strerror(errno));
+        HOOK_LOG("[Toolscreen] mprotect RWX (restore) failed for %p: %s\n", target, strerror(errno));
         return;
     }
     memcpy(target, backup, kJumpSize);
@@ -146,7 +149,7 @@ void* CreateTrampoline(void* target, const uint8_t* backup) {
     void* tramp = mmap(nullptr, trampSize, PROT_READ | PROT_WRITE | PROT_EXEC,
                        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (tramp == MAP_FAILED) {
-        fprintf(stderr, "[Toolscreen] mmap trampoline failed\n");
+        HOOK_LOG("[Toolscreen] mmap trampoline failed\n");
         return nullptr;
     }
 
@@ -316,7 +319,7 @@ void glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
         g_realSwapBuffers.store(reinterpret_cast<SwapBuffersFunc>(
             dlsym(RTLD_NEXT, "glXSwapBuffers")));
         if (!g_realSwapBuffers.load()) {
-            fprintf(stderr, "[Toolscreen] FATAL: Cannot find real glXSwapBuffers\n");
+            HOOK_LOG("[Toolscreen] FATAL: Cannot find real glXSwapBuffers\n");
         }
     });
 
@@ -415,10 +418,10 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
         if (glewErr == GLEW_OK) {
             g_glewReady.store(true, std::memory_order_release);
             s_glewContext = glXGetCurrentContext();
-            fprintf(stderr, "[Toolscreen] GLEW initialized OK (context %p)\n",
+            HOOK_LOG("[Toolscreen] GLEW initialized OK (context %p)\n",
                     reinterpret_cast<void*>(s_glewContext));
         } else {
-            fprintf(stderr, "[Toolscreen] GLEW init failed: %s\n",
+            HOOK_LOG("[Toolscreen] GLEW init failed: %s\n",
                     reinterpret_cast<const char*>(glewGetErrorString(glewErr)));
         }
     }
@@ -435,7 +438,21 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
         ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
         ImGui::GetStyle().FrameRounding = 3.0f;
         g_imguiInitialized = true;
-        fprintf(stderr, "[Toolscreen] ImGui initialized (X11/OpenGL3)\n");
+        HOOK_LOG("[Toolscreen] ImGui initialized (X11/OpenGL3)\n");
+    }
+
+    // ---- Create ImGui context BEFORE window detection ----
+    static bool g_imguiInitialized = false;
+    static ImGuiContext* g_imguiCtx = nullptr;
+    if (!g_imguiInitialized && g_glewReady.load()) {
+        IMGUI_CHECKVERSION();
+        g_imguiCtx = ImGui::CreateContext();
+        ImGui::SetCurrentContext(g_imguiCtx);
+        ImGui_ImplOpenGL3_Init("#version 330");
+        ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+        ImGui::GetStyle().FrameRounding = 3.0f;
+        g_imguiInitialized = true;
+        HOOK_LOG("[Toolscreen] ImGui initialized (X11/OpenGL3)\n");
     }
 
     // Detect/update game window from current GLX drawable
@@ -450,19 +467,35 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
                 ImGui_ImplX11_Init(X11Display::Get(), win);
                 X11Input::SetEventCallback(RouteX11EventToImGui);
                 g_inputWired = true;
-                fprintf(stderr, "[Toolscreen] X11 input installed on window 0x%lx\n", win);
+                HOOK_LOG("[Toolscreen] X11 input installed on window 0x%lx\n", win);
             }
         }
     }
 
     // ---- Render GUI (context already created above) ----
-    // Resolve the real glXSwapBuffers via RTLD_NEXT (skips our .so).
-    // Cached after first call — thread-safe via static local init.
+    // ---- Render ImGui overlay ----
+    if (g_imguiInitialized && g_imguiCtx && X11Display::GetGameWindow() != 0) {
+        ImGui::SetCurrentContext(g_imguiCtx);
+        ImGuiIO& io = ImGui::GetIO();
+        if (io.DisplaySize.x <= 0.0f) {
+            io.DisplaySize = ImVec2(1920.0f, 1080.0f);
+            io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
+        }
+        X11Input::PollEvents();
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplX11_NewFrame();
+        ImGui::NewFrame();
+        static bool showDemo = true;
+        ImGui::ShowDemoWindow(&showDemo);
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    }
+
+    // Call the real glXSwapBuffers via RTLD_NEXT (not trampoline!)
     static SwapBuffersFunc s_realSwap = nullptr;
     if (!s_realSwap) {
         s_realSwap = reinterpret_cast<SwapBuffersFunc>(dlsym(RTLD_NEXT, "glXSwapBuffers"));
     }
-    // Call the real glXSwapBuffers to present the frame
     inHkSwap = false;
     if (s_realSwap) s_realSwap(dpy, drawable);
     inHkSwap = true;
@@ -548,7 +581,7 @@ void CallRealSwapBuffers(Display* dpy, GLXDrawable drawable) {
 bool Initialize() {
     if (g_initialized.load()) return true;
 
-    fprintf(stderr, "[Toolscreen] GLXHook initializing...\n");
+    HOOK_LOG("[Toolscreen] GLXHook initializing...\n");
 
     // All GL/GLX functions are intercepted via LD_PRELOAD symbol interposition.
     // The dynamic linker resolves to our exported copies first.
