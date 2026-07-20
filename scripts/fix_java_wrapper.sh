@@ -1,12 +1,17 @@
 #!/bin/bash
 # Чинит обе Java-обёртки — системную и встроенную TLauncher.
 # Запускать без sudo (для системной попросит пароль через sudo).
+set -euo pipefail
 
 SO_PATH="/home/user/Toolscreen/out/build/linux-test/bin/libtoolscreen.so"
 LOG_PATH="/home/user/toolscreen.log"
-SETUP_LOG="/home/user/toolscreen_setup.log"
 
-exec > >(tee -a "$SETUP_LOG") 2>&1
+if [ ! -f "$SO_PATH" ]; then
+    echo "Ошибка: $SO_PATH не найден."
+    echo "Собери проект: cmake --build /home/user/Toolscreen/out/build/linux-test"
+    exit 1
+fi
+
 echo "=== $(date) ==="
 
 # ---- Встроенная Java TLauncher (без sudo) ----
@@ -20,13 +25,13 @@ if [ -f "$TLAUNCHER_JAVA" ]; then
     fi
     cat > "$TLAUNCHER_JAVA" << EOF
 #!/bin/bash
-export LD_PRELOAD=$SO_PATH
-exec $TLAUNCHER_REAL "\$@" 2>>$LOG_PATH
+export LD_PRELOAD="$SO_PATH"
+exec "$TLAUNCHER_REAL" "\$@" 2>>"$LOG_PATH"
 EOF
     chmod +x "$TLAUNCHER_JAVA"
-    echo "[TLauncher] Обёртка: $TLAUNCHER_JAVA → OK"
+    echo "[TLauncher] OK"
 else
-    echo "[TLauncher] Пропущено — Java не найдена: $TLAUNCHER_JAVA"
+    echo "[TLauncher] Пропущено — нет $TLAUNCHER_JAVA"
 fi
 
 # ---- Системная Java (нужен sudo) ----
@@ -34,23 +39,24 @@ SYS_JAVA="/usr/lib/jvm/java-21-openjdk-amd64/bin/java"
 SYS_REAL="${SYS_JAVA}.real"
 
 if [ -f "$SYS_JAVA" ]; then
-    echo "[System] Обновляю системную обёртку (потребуется пароль)..."
-    sudo bash -c "
-if [ ! -f '$SYS_REAL' ]; then
-    mv '$SYS_JAVA' '$SYS_REAL'
-fi
-cat > '$SYS_JAVA' << EOF
+    echo "[System] Нужен пароль sudo..."
+    if ! sudo true 2>/dev/null; then
+        echo "[System] Пропущено — нет sudo"
+    else
+        if [ ! -f "$SYS_REAL" ]; then
+            sudo mv "$SYS_JAVA" "$SYS_REAL"
+        fi
+        sudo tee "$SYS_JAVA" > /dev/null << EOF
 #!/bin/bash
-export LD_PRELOAD=$SO_PATH
-exec $SYS_REAL \"\\\$@\" 2>>$LOG_PATH
+export LD_PRELOAD="$SO_PATH"
+exec "$SYS_REAL" "\$@" 2>>"$LOG_PATH"
 EOF
-chmod +x '$SYS_JAVA'
-"
-    echo "[System] Обёртка: $SYS_JAVA → OK"
+        sudo chmod +x "$SYS_JAVA"
+        echo "[System] OK"
+    fi
 else
-    echo "[System] Пропущено — Java не найдена: $SYS_JAVA"
+    echo "[System] Пропущено — нет $SYS_JAVA"
 fi
 
 echo "=== Готово ==="
-echo "Лог Toolscreen: $LOG_PATH"
-echo "Лог установки:  $SETUP_LOG"
+echo "Лог: $LOG_PATH"
