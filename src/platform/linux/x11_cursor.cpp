@@ -72,9 +72,10 @@ void ClipCursor(const PlatformRect* rect) {
         if (!confineWin) {
             confineWin = X11Display::GetRoot();
         }
+        // event_mask=0: we only want to confine the pointer position,
+        // not intercept mouse events from the game window.
         int result = XGrabPointer(dpy, confineWin, True,
-                                   ButtonPressMask | ButtonReleaseMask |
-                                   PointerMotionMask,
+                                   0,
                                    GrabModeAsync, GrabModeAsync,
                                    confineWin, None, CurrentTime);
         if (result != GrabSuccess) {
@@ -117,7 +118,11 @@ void* LoadCursorFromRGBA(const uint8_t* rgba, int width, int height, int hotX, i
                                   24, ZPixmap, 0, nullptr, width, height, 32, 0);
     if (!image) return nullptr;
 
-    image->data = new char[image->bytes_per_line * height];
+    image->data = new (std::nothrow) char[image->bytes_per_line * height];
+    if (!image->data) {
+        XDestroyImage(image);
+        return nullptr;
+    }
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
             size_t srcIdx = (y * width + x) * 4;
@@ -134,22 +139,22 @@ void* LoadCursorFromRGBA(const uint8_t* rgba, int width, int height, int hotX, i
     GC gc = XCreateGC(dpy, pixmap, 0, nullptr);
     XPutImage(dpy, pixmap, gc, image, 0, 0, 0, 0, width, height);
 
-    // Create mask (1-bit bitmap from alpha channel: alpha > 128 = visible)
-    Pixmap mask = XCreatePixmap(dpy, X11Display::GetRoot(), width, height, 1);
-    GC maskGc = XCreateGC(dpy, mask, 0, nullptr);
-    // Build mask from alpha values — use XPutImage with a 1-bit depth bitmap
-    // For simplicity: draw each pixel where alpha > 128
+    // Build 1-bit mask bitmap in memory (avoids O(w*h) X server round-trips)
+    int bytesPerRow = (width + 7) / 8;
+    std::vector<uint8_t> maskBits(bytesPerRow * height, 0);
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
-            size_t srcIdx = (y * width + x) * 4;
-            uint8_t alpha = rgba[srcIdx + 3];
-            if (alpha > 128) {
-                XSetForeground(dpy, maskGc, 1);
-            } else {
-                XSetForeground(dpy, maskGc, 0);
+            size_t srcIdx = (static_cast<size_t>(y) * width + x) * 4;
+            if (rgba[srcIdx + 3] > 128) {
+                maskBits[y * bytesPerRow + x / 8] |= (0x80 >> (x % 8));
             }
-            XDrawPoint(dpy, mask, maskGc, x, y);
         }
+    }
+    Pixmap mask = XCreatePixmapFromBitmapData(dpy, X11Display::GetRoot(),
+                                                reinterpret_cast<char*>(maskBits.data()),
+                                                width, height, 1, 0, 1);
+    if (!mask) {
+        mask = XCreatePixmap(dpy, X11Display::GetRoot(), width, height, 1);
     }
 
     XColor fg, bg;
@@ -164,7 +169,6 @@ void* LoadCursorFromRGBA(const uint8_t* rgba, int width, int height, int hotX, i
     XFreePixmap(dpy, pixmap);
     XFreePixmap(dpy, mask);
     XFreeGC(dpy, gc);
-    XFreeGC(dpy, maskGc);
 
     return reinterpret_cast<void*>(static_cast<uintptr_t>(cursor));
 }

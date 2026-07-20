@@ -210,9 +210,11 @@ void ImGui_ImplX11_NewFrame() {
 bool ImGui_ImplX11_HandleKeyEvent(unsigned int keycode, bool isDown, unsigned int state) {
     if (!g_display) return false;
 
-    // Track modifier state from key events
-    KeySym keysym = XkbKeycodeToKeysym(g_display, keycode, 0,
-                                        state & ShiftMask ? 1 : 0);
+    // Track modifier state from key events.
+    // Always query level 0 — modifier keysyms (Shift_L, Alt_R, etc.) are
+    // independent of Shift state, and Shift+Alt_R may produce XK_Mode_switch
+    // on some layouts (e.g. German), breaking modifier tracking.
+    KeySym keysym = XkbKeycodeToKeysym(g_display, keycode, 0, 0);
     switch (keysym) {
         case XK_Control_L: case XK_Control_R: g_keyCtrl  = isDown; break;
         case XK_Shift_L:   case XK_Shift_R:   g_keyShift = isDown; break;

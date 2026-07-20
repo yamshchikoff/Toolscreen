@@ -6,6 +6,7 @@
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <X11/XKBlib.h>
 #include <X11/keysym.h>
 #include <cstdio>
 #include <cstring>
@@ -23,12 +24,26 @@ std::mutex g_callbackMutex;
 std::atomic<bool> g_installed{false};
 Window g_gameWindow = 0;
 
+// XTEST availability (checked once, cached for all SendKey/SendChar calls)
+static bool g_xtestChecked = false;
+static bool g_xtestAvailable = false;
+
+bool EnsureXTestAvailable() {
+    if (g_xtestChecked) return g_xtestAvailable;
+    g_xtestChecked = true;
+    Display* dpy = X11Display::Get();
+    if (!dpy) return false;
+    int major, minor;
+    g_xtestAvailable = XTestQueryExtension(dpy, &major, &minor, nullptr, nullptr, nullptr);
+    if (!g_xtestAvailable) {
+        fprintf(stderr, "[Toolscreen] XTEST unavailable — synthetic input disabled\n");
+    }
+    return g_xtestAvailable;
+}
+
 // Track key state for modifier queries
 std::mutex g_keyStateMutex;
 std::unordered_map<uint32_t, bool> g_keyState;
-
-// Cursor visibility
-std::atomic<bool> g_cursorVisible{true};
 
 // Map X11 keycode to canonical VK, handling AltGr, CapsLock, NumLock, and
 // multiple keyboard groups (e.g., US+Russian layouts).
@@ -204,12 +219,7 @@ void SendKeyDown(uint32_t vkCode) {
     Display* dpy = X11Display::Get();
     if (!dpy || !g_gameWindow) return;
 
-    // Check XTEST availability
-    int xtestMajor, xtestMinor;
-    if (!XTestQueryExtension(dpy, &xtestMajor, &xtestMinor, nullptr, nullptr, nullptr)) {
-        fprintf(stderr, "[Toolscreen] XTEST extension not available — synthetic input disabled\n");
-        return;
-    }
+    if (!EnsureXTestAvailable()) return;
 
     KeySym ks = X11Display::VkToX11Keysym(vkCode);
     if (ks == NoSymbol) return;
@@ -225,8 +235,7 @@ void SendKeyUp(uint32_t vkCode) {
     Display* dpy = X11Display::Get();
     if (!dpy || !g_gameWindow) return;
 
-    int xtestMajor, xtestMinor;
-    if (!XTestQueryExtension(dpy, &xtestMajor, &xtestMinor, nullptr, nullptr, nullptr)) return;
+    if (!EnsureXTestAvailable()) return;
 
     KeySym ks = X11Display::VkToX11Keysym(vkCode);
     if (ks == NoSymbol) return;
@@ -244,12 +253,7 @@ void SendChar(uint32_t charCode) {
     Display* dpy = X11Display::Get();
     if (!dpy || !g_gameWindow) return;
 
-    // Check XTEST availability
-    int xtestMajor, xtestMinor;
-    if (!XTestQueryExtension(dpy, &xtestMajor, &xtestMinor, nullptr, nullptr, nullptr)) {
-        fprintf(stderr, "[Toolscreen] XTEST unavailable — synthetic input disabled\n");
-        return;
-    }
+    if (!EnsureXTestAvailable()) return;
 
     // Convert character to KeySym
     KeySym keysym = NoSymbol;
@@ -313,7 +317,6 @@ void SetCursorPos(int x, int y) {
 void ShowCursor(bool show) {
     // Delegate to X11Cursor to avoid duplicate invisible cursor
     X11Cursor::ShowCursor(show);
-    g_cursorVisible.store(show);
 }
 
 // ---- X11 event conversion helpers ----

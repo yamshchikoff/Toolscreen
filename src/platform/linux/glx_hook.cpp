@@ -219,23 +219,6 @@ void* GetGLFunc(const char* name) {
     return func;
 }
 
-// ---- Macro: generate LD_PRELOAD interposition for a GL function ----
-// Each hooked GL function is exported from our .so with the same name as the
-// real one. The dynamic linker resolves to our copy first (thanks to LD_PRELOAD).
-// On first call we resolve the real function via dlsym(RTLD_NEXT) using
-// std::call_once for thread safety. Subsequent calls chain directly.
-//
-// Usage: GL_HOOK(return_type, FunctionName, (params...), (args...), hook_fn, real_ptr)
-#define GL_HOOK(RET, NAME, PARAMS, ARGS, HOOK_FN, REAL_PTR)                   \
-    extern "C" RET NAME PARAMS {                                               \
-        static std::once_flag s_once;                                          \
-        std::call_once(s_once, []() {                                          \
-            REAL_PTR = reinterpret_cast<decltype(REAL_PTR)>(                   \
-                dlsym(RTLD_NEXT, #NAME));                                      \
-        });                                                                    \
-        HOOK_FN ARGS;                                                          \
-    }
-
 // ---- glXSwapBuffers interposition ----
 // Uses a thread_local guard against re-entrancy (our own rendering may
 // trigger another swap). Resolution via std::call_once for thread safety.

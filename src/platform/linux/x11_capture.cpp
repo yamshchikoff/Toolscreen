@@ -11,7 +11,6 @@
 #include <cstdio>
 #include <cstring>
 #include <algorithm>
-#include <atomic>
 #include <mutex>
 
 namespace X11Capture {
@@ -56,7 +55,7 @@ void CopyXImageToRGBA(const XImage* image, int w, int h,
             }
         }
     } else if (bpp >= 15) {
-        // 16 or 15 bpp: unpack using image masks
+        // 16 or 15 bpp: unpack using image masks with 5→8 / 6→8 bit scaling
         const unsigned long rm = image->red_mask;
         const unsigned long gm = image->green_mask;
         const unsigned long bm = image->blue_mask;
@@ -65,6 +64,19 @@ void CopyXImageToRGBA(const XImage* image, int w, int h,
         const int rshift = __builtin_ctzl(rm);
         const int gshift = __builtin_ctzl(gm);
         const int bshift = __builtin_ctzl(bm);
+
+        // Bit counts per channel (e.g., 5 for RGB555, 5/6/5 for RGB565)
+        const int rbits = __builtin_popcountl(rm);
+        const int gbits = __builtin_popcountl(gm);
+        const int bbits = __builtin_popcountl(bm);
+
+        // Scale N-bit value to 8-bit: for 5 bits (0-31) → (v<<3)|(v>>2)
+        // Helper lambda
+        auto scaleTo8 = [](unsigned long v, int bits) -> uint8_t {
+            if (bits >= 8) return static_cast<uint8_t>(v);
+            int shiftUp = 8 - bits;
+            return static_cast<uint8_t>((v << shiftUp) | (v >> (bits - shiftUp > 0 ? bits - shiftUp : 0)));
+        };
 
         for (int row = 0; row < h; ++row) {
             for (int col = 0; col < w; ++col) {
@@ -75,9 +87,9 @@ void CopyXImageToRGBA(const XImage* image, int w, int h,
                 uint16_t pixel;
                 memcpy(&pixel, src + srcIdx, sizeof(pixel));
 
-                outRgba[dstIdx + 0] = static_cast<uint8_t>((pixel & rm) >> rshift);
-                outRgba[dstIdx + 1] = static_cast<uint8_t>((pixel & gm) >> gshift);
-                outRgba[dstIdx + 2] = static_cast<uint8_t>((pixel & bm) >> bshift);
+                outRgba[dstIdx + 0] = scaleTo8((pixel & rm) >> rshift, rbits);
+                outRgba[dstIdx + 1] = scaleTo8((pixel & gm) >> gshift, gbits);
+                outRgba[dstIdx + 2] = scaleTo8((pixel & bm) >> bshift, bbits);
                 outRgba[dstIdx + 3] = 255;
             }
         }

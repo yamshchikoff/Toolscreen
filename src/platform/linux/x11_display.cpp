@@ -45,14 +45,14 @@ int X11ErrorHandler(Display* dpy, XErrorEvent* ev) {
     return 0;
 }
 
-    // Custom I/O error handler (connection lost — must NOT return per X11 spec)
-    // Default Xlib I/O handler calls exit(1), killing the host process.
-    // Per the X11 specification, an I/O error handler MUST NOT return —
-    // doing so is undefined behavior and can crash the host application.
-    int X11IOErrorHandler(Display* dpy) {
-        fprintf(stderr, "[Toolscreen] X11 I/O error: connection to X server lost\n");
-        _exit(1); // Required by X11 spec: I/O error handlers must not return
-    }
+// Custom I/O error handler (connection lost — must NOT return per X11 spec)
+// Default Xlib I/O handler calls exit(1), killing the host process.
+// Per the X11 specification, an I/O error handler MUST NOT return —
+// doing so is undefined behavior and can crash the host application.
+int X11IOErrorHandler(Display* dpy) {
+    fprintf(stderr, "[Toolscreen] X11 I/O error: connection to X server lost\n");
+    _exit(1); // Required by X11 spec: I/O error handlers must not return
+}
 
 // Map X11 KeySym to canonical Windows VK
 const std::unordered_map<KeySym, PlatformVk>& GetKeysymToVkMap() {
@@ -236,9 +236,9 @@ static Window SearchWindowTree(Display* dpy, Window win, Atom netWmName, Atom wm
     }
 
     // Search children recursively
-    Window root, parent, *children;
-    unsigned int nchildren;
-    if (XQueryTree(dpy, win, &root, &parent, &children, &nchildren) && nchildren > 0) {
+    Window root, parent, *children = nullptr;
+    unsigned int nchildren = 0;
+    if (XQueryTree(dpy, win, &root, &parent, &children, &nchildren) && children && nchildren > 0) {
         for (unsigned int i = 0; i < nchildren; ++i) {
             Window result = SearchWindowTree(dpy, children[i], netWmName, wmClass, depth + 1);
             if (result != 0) { XFree(children); return result; }
@@ -369,7 +369,6 @@ bool GetMonitorGeometry(int index, PlatformRect& outRect, bool& outIsPrimary) {
     outIsPrimary = (index == 0);
     return true;
 }
-}
 
 uint32_t X11KeyToVk(KeySym keysym, unsigned int /*keycode*/, unsigned int /*state*/) {
     // Direct keysym mapping
@@ -387,9 +386,13 @@ uint32_t X11KeyToVk(KeySym keysym, unsigned int /*keycode*/, unsigned int /*stat
         return (uint32_t)keysym;
     }
 
-    // Cyrillic range (0x400-0x4FF) — map to Latin equivalents
+    // Cyrillic range (0x400-0x4FF) — shouldn't reach here with XKeycodeToVk
+    // using group=0 level=0, but if it does, log and fall through to 0
     if (keysym >= 0x400 && keysym <= 0x4FF) {
-        return 0; // No VK equivalent, raw scancode mapping needed
+        fprintf(stderr, "[Toolscreen] WARNING: Cyrillic keysym 0x%lX reached X11KeyToVk — "
+                "XKeycodeToVk should have mapped to Latin equivalent\n",
+                static_cast<unsigned long>(keysym));
+        return 0;
     }
 
     return 0;

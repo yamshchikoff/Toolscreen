@@ -282,8 +282,9 @@ PlatformVk StringToVk(const std::string& keyStr) {
     if (keyStr == "NumLock") return Vk::NUMLOCK;
     if (keyStr == "ScrollLock") return Vk::SCROLL;
 
-    // Function keys
-    if (keyStr.length() >= 2 && keyStr[0] == 'F') {
+    // Function keys (strict: F1-F16, no trailing garbage)
+    if (keyStr.length() >= 2 && keyStr.length() <= 3 && keyStr[0] == 'F'
+        && strspn(keyStr.c_str() + 1, "0123456789") == keyStr.length() - 1) {
         int num = atoi(keyStr.c_str() + 1);
         if (num >= 1 && num <= 16) return Vk::F1 + (num - 1);
     }
