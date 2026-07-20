@@ -183,6 +183,12 @@ void PollEvents() {
             inputEv.window = ev.xdestroywindow.window;
             valid = true;
             break;
+        case PropertyNotify:
+            // PropertyChange events are consumed without action;
+            // the mask is included for compatibility with the game's event stream
+            break;
+            valid = true;
+            break;
         }
 
         if (valid) {
@@ -235,7 +241,10 @@ void SendKeyDown(uint32_t vkCode) {
     if (ks == NoSymbol) return;
 
     unsigned int keycode = XKeysymToKeycode(dpy, ks);
-    if (keycode == 0) return;
+    if (keycode == 0) {
+        fprintf(stderr, "[Toolscreen] SendKeyDown: no keycode for VK 0x%X\n", vkCode);
+        return;
+    }
 
     XTestFakeKeyEvent(dpy, keycode, True, CurrentTime);
     X11Display::Flush();
@@ -251,7 +260,10 @@ void SendKeyUp(uint32_t vkCode) {
     if (ks == NoSymbol) return;
 
     unsigned int keycode = XKeysymToKeycode(dpy, ks);
-    if (keycode == 0) return;
+    if (keycode == 0) {
+        fprintf(stderr, "[Toolscreen] SendKeyUp: no keycode for VK 0x%X\n", vkCode);
+        return;
+    }
 
     XTestFakeKeyEvent(dpy, keycode, False, CurrentTime);
     X11Display::Flush();

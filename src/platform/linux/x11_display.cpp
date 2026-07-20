@@ -213,8 +213,8 @@ int GetScreen() { return g_screen; }
 Window GetRoot() { return g_root; }
 
 // Recursively search a window and its children for a Minecraft/LWJGL window
-static Window SearchWindowTree(Display* dpy, Window win, Atom netWmName, Atom wmClass, int depth) {
-    if (depth > 5 || win == 0) return 0;
+static Window SearchWindowTree(Display* dpy, Window win, Atom netWmName, Atom wmClass, int depth, int& windowsVisited) {
+    if (depth > 5 || win == 0 || ++windowsVisited > 1000) return 0;
 
     // Check this window
     if (netWmName != None) {
@@ -245,7 +245,7 @@ static Window SearchWindowTree(Display* dpy, Window win, Atom netWmName, Atom wm
     unsigned int nchildren = 0;
     if (XQueryTree(dpy, win, &root, &parent, &children, &nchildren) && children && nchildren > 0) {
         for (unsigned int i = 0; i < nchildren; ++i) {
-            Window result = SearchWindowTree(dpy, children[i], netWmName, wmClass, depth + 1);
+            Window result = SearchWindowTree(dpy, children[i], netWmName, wmClass, depth + 1, windowsVisited);
             if (result != 0) { XFree(children); return result; }
         }
         XFree(children);
@@ -259,8 +259,9 @@ Window FindGameWindow() {
     Atom netWmName = XInternAtom(g_display, "_NET_WM_NAME", True);
     Atom wmClass = XInternAtom(g_display, "WM_CLASS", True);
 
+    int visited = 0;
     return SearchWindowTree(g_display, RootWindow(g_display, g_screen),
-                            netWmName, wmClass, 0);
+                            netWmName, wmClass, 0, visited);
 }
 
 void SetGameWindow(Window win) { g_gameWindow = win; }
