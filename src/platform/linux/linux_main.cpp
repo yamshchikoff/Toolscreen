@@ -257,53 +257,7 @@ std::string VkToString(PlatformVk vk) {
     return std::string(buf);
 }
 
-PlatformVk StringToVk(const std::string& keyStr) {
-    // Simple single-key parser
-    // For full implementation, integrate with the existing ParseHotkeyString in gui.h
-    if (keyStr == "Ctrl" || keyStr == "Control") return Vk::CONTROL;
-    if (keyStr == "Shift") return Vk::SHIFT;
-    if (keyStr == "Alt") return Vk::MENU;
-    if (keyStr == "Win" || keyStr == "Super") return Vk::LWIN;
-    if (keyStr == "Space") return Vk::SPACE;
-    if (keyStr == "Tab") return Vk::TAB;
-    if (keyStr == "Enter" || keyStr == "Return") return Vk::RETURN;
-    if (keyStr == "Escape" || keyStr == "Esc") return Vk::ESCAPE;
-    if (keyStr == "Backspace") return Vk::BACK;
-    if (keyStr == "Delete" || keyStr == "Del") return Vk::DELETE;
-    if (keyStr == "Insert" || keyStr == "Ins") return Vk::INSERT;
-    if (keyStr == "Home") return Vk::HOME;
-    if (keyStr == "End") return Vk::END;
-    if (keyStr == "PageUp") return Vk::PRIOR;
-    if (keyStr == "PageDown") return Vk::NEXT;
-    if (keyStr == "Left") return Vk::LEFT;
-    if (keyStr == "Right") return Vk::RIGHT;
-    if (keyStr == "Up") return Vk::UP;
-    if (keyStr == "Down") return Vk::DOWN;
-    if (keyStr == "CapsLock") return Vk::CAPITAL;
-    if (keyStr == "NumLock") return Vk::NUMLOCK;
-    if (keyStr == "ScrollLock") return Vk::SCROLL;
-
-    // Function keys (strict: F1-F16, no trailing garbage)
-    if (keyStr.length() >= 2 && keyStr.length() <= 3 && keyStr[0] == 'F'
-        && strspn(keyStr.c_str() + 1, "0123456789") == keyStr.length() - 1) {
-        int num = atoi(keyStr.c_str() + 1);
-        if (num >= 1 && num <= 16) return Vk::F1 + (num - 1);
-    }
-
-    // Single character
-    if (keyStr.length() == 1) {
-        char c = keyStr[0];
-        if (c >= '0' && c <= '9') return Vk::KEY_0 + (c - '0');
-        if (c >= 'A' && c <= 'Z') return Vk::KEY_A + (c - 'A');
-        if (c >= 'a' && c <= 'z') return Vk::KEY_A + (c - 'a');
-    }
-
-    // Try hex format
-    if (keyStr.length() >= 2 && keyStr[0] == '0' && (keyStr[1] == 'x' || keyStr[1] == 'X')) {
-        return (PlatformVk)strtoul(keyStr.c_str() + 2, nullptr, 16);
-    }
-
-    return 0;
-}
+// StringToVk is defined in gui_controls.cpp (shared implementation)
+// PlatformVk StringToVk = DWORD StringToVk (same type on Linux)
 
 #endif // PLATFORM_LINUX

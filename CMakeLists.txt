@@ -267,6 +267,9 @@ endif()
 
     toolscreen_enable_release_symbols(toolscreen_glew)
 
+# GLEW must be position-independent for shared library linking
+set_target_properties(toolscreen_glew PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 add_library(Toolscreen::glew ALIAS toolscreen_glew)
 
 FetchContent_GetProperties(imgui)
@@ -544,6 +547,11 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     ${CMAKE_DL_LIBS}
     pthread
     z
+)
+
+# Allow multiple definitions (glx_hook.cpp LD_PRELOAD symbols conflict with GLEW stubs)
+target_link_options(${PROJECT_NAME} PRIVATE
+    -Wl,--allow-multiple-definition
 )
 
 target_compile_options(${PROJECT_NAME} PRIVATE
