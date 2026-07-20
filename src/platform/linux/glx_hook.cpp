@@ -109,9 +109,10 @@ void InstallJump(void* target, void* destination, uint8_t* backup) {
     // Make page writable
     size_t span = PageSpan(target, kJumpSize);
     if (mprotect(PageAlign(target), span, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
-        fprintf(stderr, "[Toolscreen] mprotect RWX failed for %p: %s\n", target, strerror(errno));
+        HOOK_LOG("[Toolscreen] mprotect FAILED for %p (span %zu): %s\n", target, span, strerror(errno));
         return;
     }
+    HOOK_LOG("[Toolscreen] mprotect OK, writing jump at %p → %p\n", target, destination);
 
     // Fill with NOPs
     memset(target, 0x90, kJumpSize);
