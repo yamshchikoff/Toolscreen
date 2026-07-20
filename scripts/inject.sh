@@ -33,9 +33,11 @@ sysctl -w kernel.yama.ptrace_scope=0 > /dev/null 2>&1
 # Инжектим через gdb: dlopen с флагом RTLD_NOW=2
 gdb --pid "$PID" \
     -batch \
+    -ex "call (void*)dlopen(\"libXtst.so.6\", 2)" \
     -ex "call (void*)dlopen(\"$SO\", 2)" \
+    -ex "call (char*)dlerror()" \
     -ex "detach" \
-    -ex "quit" 2>&1 | grep -E "0x|Error|error|symbol"
+    -ex "quit" 2>&1 | grep -E "0x|Error|error|symbol|dlopen"
 
 echo ""
 echo "Готово. Вернись в игру — должно появиться окно ImGui."
