@@ -784,10 +784,76 @@ namespace Vk {
     #define MEM_RESERVE 0x2000
     #define WM_ACTIVATEAPP 0x1C
     #define WM_MOVE 3
+    #define WM_MOVING 0x216
+    #define SIZE_MINIMIZED 1
     inline int ShowCursor(int) { return 0; }
     inline LRESULT CallWindowProc(WNDPROC, HWND, UINT, WPARAM, LPARAM) { return 0; }
-    inline int GetFileVersionInfoSizeW(const wchar_t*, unsigned long*) { return 0; }
+    inline DWORD GetFileVersionInfoSizeW(const wchar_t*, DWORD*) { return 0; }
     inline int GetFileVersionInfoW(const wchar_t*, unsigned long, unsigned long, void*) { return 0; }
+    inline int VerQueryValueW(const void*, const wchar_t*, void**, unsigned int*) { return 0; }
+    inline unsigned long GetModuleFileNameW(HMODULE, wchar_t*, unsigned long) { return 0; }
+
+    // Module info stubs
+    struct MODULEINFO { void* lpBaseOfDll; unsigned long SizeOfImage; void* EntryPoint; };
+    inline int GetModuleInformation(void*, HMODULE, MODULEINFO*, unsigned long) { return 0; }
+
+    // PE parsing stubs
+    #define IMAGE_DOS_SIGNATURE 0x5A4D
+    #define IMAGE_NT_SIGNATURE 0x4550
+    #define IMAGE_DIRECTORY_ENTRY_IMPORT 1
+    struct IMAGE_DOS_HEADER { unsigned short e_magic; unsigned char _pad[58]; long e_lfanew; };
+    struct IMAGE_FILE_HEADER { unsigned short Machine; unsigned short NumberOfSections; unsigned long TimeDateStamp; unsigned long PointerToSymbolTable; unsigned long NumberOfSymbols; unsigned short SizeOfOptionalHeader; unsigned short Characteristics; };
+    struct IMAGE_DATA_DIRECTORY { unsigned long VirtualAddress; unsigned long Size; };
+    struct IMAGE_OPTIONAL_HEADER { unsigned short Magic; unsigned char _pad1[94]; IMAGE_DATA_DIRECTORY DataDirectory[16]; };
+    struct IMAGE_NT_HEADERS { unsigned long Signature; IMAGE_FILE_HEADER FileHeader; IMAGE_OPTIONAL_HEADER OptionalHeader; };
+    using PIMAGE_DOS_HEADER = IMAGE_DOS_HEADER*;
+    using PIMAGE_NT_HEADERS = IMAGE_NT_HEADERS*;
+    struct IMAGE_IMPORT_DESCRIPTOR { unsigned long OriginalFirstThunk; unsigned long TimeDateStamp; unsigned long ForwarderChain; unsigned long Name; unsigned long FirstThunk; };
+    using PIMAGE_IMPORT_DESCRIPTOR = IMAGE_IMPORT_DESCRIPTOR*;
+    struct IMAGE_THUNK_DATA { union { unsigned long Function; unsigned long Ordinal; unsigned long AddressOfData; } u1; };
+    using PIMAGE_THUNK_DATA = IMAGE_THUNK_DATA*;
+    struct IMAGE_IMPORT_BY_NAME { unsigned short Hint; char Name[1]; };
+    using PIMAGE_IMPORT_BY_NAME = IMAGE_IMPORT_BY_NAME*;
+    #define IMAGE_SNAP_BY_ORDINAL(Ordinal) ((Ordinal) & 0x80000000)
+    #define IMAGE_ORDINAL_FLAG 0x80000000
+    inline HMODULE GetModuleHandle(const wchar_t*) { return nullptr; }
+    inline void* GetProcAddress(HMODULE, const char*) { return nullptr; }
+    #define WM_SIZING 0x214
+    #define WM_WINDOWPOSCHANGED 0x47
+    #define WM_DPICHANGED 0x2E0
+    #define WM_DISPLAYCHANGE 0x7E
+    #define WM_MOUSEFIRST 0x200
+    #define WM_MOUSELAST 0x20D
+    #define WM_SYSCHAR 0x106
+    #define WM_DEADCHAR 0x103
+    #define WM_SYSDEADCHAR 0x107
+    #define WM_TIMER 0x113
+    #define INFINITE 0xFFFFFFFF
+    #define WAIT_OBJECT_0 0
+    inline unsigned long WaitForMultipleObjects(unsigned long, void* const*, int, unsigned long) { return WAIT_OBJECT_0; }
+    inline int CancelWaitableTimer(void*) { return 1; }
+    inline int SetWaitableTimer(void*, const LARGE_INTEGER*, long, void*, void*, int) { return 1; }
+    inline int PostMessageW(void*, unsigned int, WPARAM, LPARAM) { return 1; }
+    inline void* CreateEventW(void*, int, int, const wchar_t*) { return reinterpret_cast<void*>(1); }
+    struct WINDOWPOS { HWND hwnd; HWND hwndInsertAfter; int x, y, cx, cy; unsigned int flags; };
+    #define WM_INPUT 0xFF
+    #define WM_DESTROY 2
+    inline LRESULT DefWindowProc(HWND, UINT, WPARAM, LPARAM) { return 0; }
+    inline int EnumProcessModules(void*, HMODULE*, unsigned long, DWORD*) { return 0; }
+
+    // MinHook stubs (compilation only — MinHook is Windows-only)
+    using MH_STATUS = int;
+    #define MH_OK 0
+    #define MH_ERROR_ALREADY_CREATED 1
+    #define MH_ERROR_ENABLED 2
+    inline MH_STATUS MH_EnableHook(void*) { return MH_OK; }
+    inline MH_STATUS MH_RemoveHook(void*) { return MH_OK; }
+    inline MH_STATUS MH_CreateHook(void*, void*, void**) { return MH_OK; }
+    #define OPEN_ALWAYS 4
+
+    // XBUTTON1/2 as constexpr (not macros — avoids conflict with Vk::XBUTTON1)
+    constexpr unsigned short XBUTTON1 = 1;
+    constexpr unsigned short XBUTTON2 = 2;
     inline void* CreateFileMappingW(void*, void*, unsigned long, unsigned long, unsigned long, const wchar_t*) { return nullptr; }
     #define FILE_MAP_ALL_ACCESS 0xF001F
     inline int GetCursorPos(POINT* p) { if (p) { p->x = p->y = 0; } return 1; }
@@ -900,7 +966,7 @@ namespace Vk {
     #define WINHTTP_FLAG_SECURE 0x800000
     #define WINHTTP_QUERY_STATUS_CODE 19
     #define WINHTTP_QUERY_FLAG_NUMBER 0x20000000
-    #define WINHTTP_HEADER_NAME_BY_INDEX nullptr
+    #define WINHTTP_HEADER_NAME_BY_INDEX 0
     #define WINHTTP_NO_HEADER_INDEX 0xFFFFFFFF
     #define WINHTTP_QUERY_CONTENT_TYPE 1
     inline HINTERNET WinHttpOpen(const wchar_t*, unsigned long, const wchar_t*, const wchar_t*, unsigned long) { return nullptr; }
@@ -938,8 +1004,9 @@ namespace Vk {
 
     // String stubs
     inline int sprintf_s(char* buf, const char* fmt, ...) { va_list va; va_start(va, fmt); vsprintf(buf, fmt, va); va_end(va); return 0; }
-    // strncpy_s — 4-arg pointer version
+    // strncpy_s — 4-arg pointer version + 3-arg template version
     inline int strncpy_s(char* dst, size_t size, const char* src, size_t n) { if (dst && src) { strncpy(dst, src, std::min(size - 1, n)); dst[std::min(size - 1, n)] = '\0'; } return 0; }
+    template<size_t N> inline int strncpy_s(char (&dst)[N], const char* src, size_t n) { return strncpy_s(dst, N, src, n); }
     inline int wcsncpy_s(wchar_t* dst, size_t size, const wchar_t* src, size_t n) { if (dst && src) { wcsncpy(dst, src, std::min(size - 1, n)); dst[std::min(size - 1, n)] = L'\0'; } return 0; }
     inline int _wcsicmp(const wchar_t* a, const wchar_t* b) { return wcscasecmp(a, b); }
     #define _TRUNCATE ((size_t)-1)
@@ -974,7 +1041,9 @@ namespace Vk {
     #define WINHTTP_NO_ADDITIONAL_HEADERS nullptr
     #define WINHTTP_NO_REQUEST_DATA nullptr
     // DWORD* overloads for WinHTTP
-    inline int WinHttpQueryHeaders(HINTERNET, unsigned long, const wchar_t*, void*, DWORD*, DWORD*) { return 0; }
+    inline int WinHttpQueryHeaders(HINTERNET, unsigned long, DWORD, void*, DWORD*, DWORD) { return 0; }
+    // Overload for WINHTTP_NO_HEADER_INDEX usage
+    inline int WinHttpQueryHeaders(HINTERNET, unsigned long, DWORD, void*, DWORD*, DWORD*) { return 0; }
     inline int WinHttpQueryDataAvailable(HINTERNET, DWORD*) { return 0; }
     inline int WinHttpReadData(HINTERNET, void*, unsigned long, DWORD*) { return 0; }
 
