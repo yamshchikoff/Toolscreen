@@ -433,9 +433,11 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     // ---- Minimal GUI render pipeline ----
     // Initialize ImGui context on first frame
     static bool g_imguiInitialized = false;
+    static ImGuiContext* g_imguiCtx = nullptr;
     if (!g_imguiInitialized && g_glewReady.load()) {
         IMGUI_CHECKVERSION();
-        ImGui::CreateContext();
+        g_imguiCtx = ImGui::CreateContext();
+        ImGui::SetCurrentContext(g_imguiCtx);
         ImGui_ImplOpenGL3_Init("#version 330");
         ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
         ImGui::GetStyle().FrameRounding = 3.0f;
@@ -443,8 +445,8 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
         fprintf(stderr, "[Toolscreen] ImGui initialized (X11/OpenGL3)\n");
     }
 
-    if (g_imguiInitialized && X11Display::GetGameWindow() != 0) {
-        // Poll X11 events and feed to ImGui
+    if (g_imguiInitialized && g_imguiCtx && X11Display::GetGameWindow() != 0) {
+        ImGui::SetCurrentContext(g_imguiCtx);
         X11Input::PollEvents();
 
         // Start the ImGui frame
