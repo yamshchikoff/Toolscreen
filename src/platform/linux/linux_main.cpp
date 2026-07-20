@@ -26,6 +26,7 @@
 // ---- Global state (mirrors Windows dllmain.cpp globals) ----
 // These are the core globals expected by the rest of the codebase.
 // In the Windows build they live in dllmain.cpp. For Linux, we provide them here.
+// WARNING: many are stubs (false/0) — full functionality needs the render pipeline.
 
 // Config (declared extern in utils.h)
 #include "gui/gui.h"
@@ -34,8 +35,118 @@ Config g_sharedConfig;
 std::atomic<bool> g_configIsDirty{false};
 std::atomic<uint64_t> g_configSnapshotVersion{0};
 
-// We'll define additional globals as needed during subsystem integration
+// Shutdown
 std::atomic<bool> g_isShuttingDown{false};
+
+// Game window
+std::atomic<HWND> g_minecraftHwnd{nullptr};
+std::atomic<bool> g_gameWindowActive{false};
+std::atomic<HWND> g_subclassedHwnd{nullptr};
+WNDPROC g_originalWndProc = nullptr;
+
+// Config/state
+std::atomic<bool> g_configLoaded{false};
+std::atomic<bool> g_configLoadFailed{false};
+std::string g_configLoadError;
+std::mutex g_configErrorMutex;
+std::wstring g_toolscreenPath;
+std::wstring g_modeFilePath;
+std::wstring g_stateFilePath;
+std::wstring g_hermesAliveFilePath;
+std::wstring g_stateOutputFilePath;
+std::atomic<bool> g_isStateOutputAvailable{false};
+
+// GUI visibility
+std::atomic<bool> g_showGui{false};
+std::atomic<bool> g_imageOverlaysVisible{true};
+std::atomic<bool> g_windowOverlaysVisible{true};
+std::atomic<bool> g_ninjabrainOverlayVisible{true};
+std::atomic<bool> g_browserOverlaysVisible{true};
+std::atomic<bool> g_guiNeedsRecenter{false};
+std::atomic<bool> g_overlayEditorMode{false};
+
+// Mode
+std::string g_currentModeId;
+std::mutex g_modeIdMutex;
+std::string g_modeIdBuffers[2];
+std::atomic<int> g_currentModeIdIndex{0};
+std::atomic<bool> g_screenshotRequested{false};
+
+// Cursor
+std::atomic<bool> g_cursorsNeedReload{false};
+std::atomic<bool> g_glfwCursorGrabbed{false};
+std::atomic<bool> g_wasCursorVisible{true};
+std::atomic<bool> g_forceVisibleCursorWhileGuiOpen{false};
+std::atomic<HCURSOR> g_specialCursorHandle{nullptr};
+
+// Graphics hook
+std::atomic<bool> g_graphicsHookDetected{false};
+std::atomic<HMODULE> g_graphicsHookModule{nullptr};
+std::chrono::steady_clock::time_point g_lastGraphicsHookCheck;
+const int GRAPHICS_HOOK_CHECK_INTERVAL_MS = 5000;
+
+// Hotkeys (declared extern in utils.h / gui.h — defined in gui.cpp on Windows)
+std::mutex g_hotkeyMainKeysMutex;
+std::vector<DWORD> g_hotkeyMainKeys;
+std::mutex g_triggerOnReleaseMutex;
+std::string g_triggerOnReleasePending;
+std::string g_triggerOnReleaseInvalidated;
+
+// Mirror selection
+std::string g_currentlyEditingMirror;
+std::string g_selectedMirrorName;
+int g_selectedMirrorOutW = 0, g_selectedMirrorOutH = 0;
+int g_selectedMirrorScreenX = 0, g_selectedMirrorScreenY = 0;
+int g_selectedMirrorScreenW = 0, g_selectedMirrorScreenH = 0;
+std::string g_scrollToMirrorName;
+
+// Window overlay selection
+std::string g_selectedWindowOverlayName;
+int g_selectedWindowOverlayScreenX = 0, g_selectedWindowOverlayScreenY = 0;
+int g_selectedWindowOverlayScreenW = 0, g_selectedWindowOverlayScreenH = 0;
+std::string g_scrollToWindowOverlayName;
+bool g_windowOverlayCropMode = false;
+
+// Image selection
+std::string g_selectedImageName;
+int g_selectedImageScreenX = 0, g_selectedImageScreenY = 0;
+int g_selectedImageScreenW = 0, g_selectedImageScreenH = 0;
+std::string g_scrollToImageName;
+bool g_imageCropMode = false;
+
+// Drag modes (declared extern in utils.h)
+
+// Interactive create
+std::atomic<bool> g_interactiveCreateCancel{false};
+std::atomic<bool> g_interactiveCreateRequested{false};
+std::atomic<bool> g_interactiveCreateRelativeToScreen{false};
+std::atomic<int> g_interactiveCreateStage{0};
+
+// Pending mode switch (types from render.h — declared extern in utils.h)
+std::mutex g_pendingModeSwitchMutex;
+std::mutex g_modeTransitionMutex;
+
+// Temp sensitivity
+std::mutex g_tempSensitivityMutex;
+
+// Game state
+std::string g_gameStateBuffers[2];
+std::atomic<int> g_currentGameStateIndex{0};
+
+// Images
+std::atomic<bool> g_allImagesLoaded{false};
+std::mutex g_decodedImagesMutex;
+
+// Logging
+std::ofstream logFile;
+std::mutex g_logFileMutex;
+
+// Monitoring
+std::atomic<bool> g_stopMonitoring{false};
+std::atomic<bool> g_stopImageMonitoring{false};
+
+// Misc
+HMODULE g_hModule = nullptr;
 
 namespace {
 
