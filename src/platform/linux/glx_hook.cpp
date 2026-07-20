@@ -449,6 +449,14 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     // ---- Render GUI (context already created above) ----
     if (g_imguiInitialized && g_imguiCtx && X11Display::GetGameWindow() != 0) {
         ImGui::SetCurrentContext(g_imguiCtx);
+
+        // Ensure DisplaySize is set (required by ImGui::NewFrame)
+        ImGuiIO& io = ImGui::GetIO();
+        if (io.DisplaySize.x <= 0.0f) {
+            io.DisplaySize = ImVec2(1920.0f, 1080.0f);
+            io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
+        }
+
         X11Input::PollEvents();
 
         // Start the ImGui frame
