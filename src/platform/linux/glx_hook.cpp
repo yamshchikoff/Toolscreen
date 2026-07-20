@@ -413,25 +413,8 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
         }
     }
 
-    // Detect game window from current GLX drawable
-    if (X11Display::GetGameWindow() == 0) {
-        GLXDrawable currentDrawable = glXGetCurrentDrawable();
-        if (currentDrawable) {
-            Window win = static_cast<Window>(currentDrawable);
-            X11Display::SetGameWindow(win);
-
-            // Wire up X11 input → ImGui bridge on first detection
-            if (!g_inputWired) {
-                X11Input::Install(win);
-                ImGui_ImplX11_Init(X11Display::Get(), win);
-                X11Input::SetEventCallback(RouteX11EventToImGui);
-                g_inputWired = true;
-            }
-        }
-    }
-
-    // ---- Minimal GUI render pipeline ----
-    // Initialize ImGui context on first frame
+    // ---- Create ImGui context BEFORE window detection ----
+    // (ImGui_ImplX11_Init calls ImGui::GetIO() which needs a context)
     static bool g_imguiInitialized = false;
     static ImGuiContext* g_imguiCtx = nullptr;
     if (!g_imguiInitialized && g_glewReady.load()) {
@@ -445,6 +428,25 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
         fprintf(stderr, "[Toolscreen] ImGui initialized (X11/OpenGL3)\n");
     }
 
+    // Detect game window from current GLX drawable
+    if (X11Display::GetGameWindow() == 0) {
+        GLXDrawable currentDrawable = glXGetCurrentDrawable();
+        if (currentDrawable) {
+            Window win = static_cast<Window>(currentDrawable);
+            X11Display::SetGameWindow(win);
+
+            // Wire up X11 input → ImGui bridge on first detection
+            if (!g_inputWired && g_imguiCtx) {
+                ImGui::SetCurrentContext(g_imguiCtx);
+                X11Input::Install(win);
+                ImGui_ImplX11_Init(X11Display::Get(), win);
+                X11Input::SetEventCallback(RouteX11EventToImGui);
+                g_inputWired = true;
+            }
+        }
+    }
+
+    // ---- Render GUI (context already created above) ----
     if (g_imguiInitialized && g_imguiCtx && X11Display::GetGameWindow() != 0) {
         ImGui::SetCurrentContext(g_imguiCtx);
         X11Input::PollEvents();
