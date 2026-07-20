@@ -473,6 +473,12 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     }
+
+    // Call the original glXSwapBuffers to present the frame
+    auto* realSwap = g_realSwapBuffers.load(std::memory_order_acquire);
+    if (realSwap) {
+        realSwap(dpy, drawable);
+    }
 }
 
 void hk_glViewport(GLint x, GLint y, GLsizei width, GLsizei height) {
