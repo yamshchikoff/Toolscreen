@@ -389,9 +389,20 @@ void ToolscreenLazyInit() {
 extern "C" __attribute__((constructor))
 void ToolscreenLinuxInit() {
     TS_LOG("[Toolscreen] libtoolscreen.so loaded (constructor)\n");
-    // Runtime hook for dlopen injection: patches glXSwapBuffers in-process
-    GLXHook::InstallRuntimeHook();
-    // NOTE: do NOT install signal handlers here — JVM uses SIGSEGV internally
+    // Full init: X11, GL, config — constructor runs before main()
+    // Safe because LD_PRELOAD loads .so at process start, when JVM is ready
+    XInitThreads();
+    SharedInit::InstallExceptionHandlers();
+
+    if (InitPlatform()) {
+        InitLogger();
+        InitGLHook();
+        SharedInit::InitConfig(g_config, Platform::GetModuleDirectory());
+        LoadToolscreenConfig();
+        StartThreads();
+        g_initialized.store(true);
+        TS_LOG("[Toolscreen] Initialization complete\n");
+    }
 }
 
 // __attribute__((destructor)) runs when the .so is unloaded

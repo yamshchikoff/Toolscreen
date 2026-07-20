@@ -389,8 +389,9 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     // glXSwapBuffers which should NOT re-enter our hook.
     static thread_local bool inHkSwap = false;
     if (inHkSwap) {
-        auto* realSwap = g_realSwapBuffers.load(std::memory_order_acquire);
-        if (realSwap) realSwap(dpy, drawable);
+        static SwapBuffersFunc s_real = nullptr;
+        if (!s_real) s_real = reinterpret_cast<SwapBuffersFunc>(dlsym(RTLD_NEXT, "glXSwapBuffers"));
+        if (s_real) s_real(dpy, drawable);
         return;
     }
     inHkSwap = true;
@@ -455,16 +456,15 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     }
 
     // ---- Render GUI (context already created above) ----
-    // Call the original glXSwapBuffers to present the frame
-    inHkSwap = false;
-    auto* realSwap = g_realSwapBuffers.load(std::memory_order_acquire);
-    if (realSwap) {
-        realSwap(dpy, drawable);
-    } else {
-        // Fallback: call glXSwapBuffers via dlsym
-        static auto fallbackSwap = (void(*)(Display*,GLXDrawable))dlsym(RTLD_NEXT, "glXSwapBuffers");
-        if (fallbackSwap && fallbackSwap != (void*)hk_glXSwapBuffers) fallbackSwap(dpy, drawable);
+    // Resolve the real glXSwapBuffers via RTLD_NEXT (skips our .so).
+    // Cached after first call — thread-safe via static local init.
+    static SwapBuffersFunc s_realSwap = nullptr;
+    if (!s_realSwap) {
+        s_realSwap = reinterpret_cast<SwapBuffersFunc>(dlsym(RTLD_NEXT, "glXSwapBuffers"));
     }
+    // Call the real glXSwapBuffers to present the frame
+    inHkSwap = false;
+    if (s_realSwap) s_realSwap(dpy, drawable);
     inHkSwap = true;
 }
 
@@ -520,7 +520,6 @@ void InstallRuntimeHook() {
         // RTLD_NEXT skips our own .so and finds the real libGL's glXSwapBuffers
         void* target = dlsym(RTLD_NEXT, "glXSwapBuffers");
         if (!target) {
-            // Fallback: try via explicit libGL.so handle
             void* libGL = dlopen("libGL.so.1", RTLD_LAZY | RTLD_NOLOAD);
             if (libGL) target = dlsym(libGL, "glXSwapBuffers");
         }
@@ -530,8 +529,9 @@ void InstallRuntimeHook() {
         }
         void* trampoline = nullptr;
         if (CreateHook(target, reinterpret_cast<void*>(hk_glXSwapBuffers), &trampoline) && trampoline) {
+            // Store the trampoline (original glXSwapBuffers) for Shutdown/CallRealSwapBuffers
             g_realSwapBuffers.store(reinterpret_cast<SwapBuffersFunc>(trampoline));
-            HOOK_LOG("[Toolscreen] glXSwapBuffers hooked at %p → trampoline %p\n", target, trampoline);
+            HOOK_LOG("[Toolscreen] glXSwapBuffers hooked at %p\n", target);
         } else {
             HOOK_LOG("[Toolscreen] InstallRuntimeHook: CreateHook failed\n");
         }
