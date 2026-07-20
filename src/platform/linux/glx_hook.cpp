@@ -23,6 +23,8 @@ extern void ToolscreenLazyInit();
 #include <cstring>
 #include <dlfcn.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <atomic>
 #include <mutex>
@@ -203,6 +205,16 @@ bool RouteX11EventToImGui(const X11Input::InputEvent& ev) {
 
 } // namespace
 
+// Utility log functions (available to all functions in GLXHook namespace)
+static void HOOK_LOG(const char* fmt, ...) {
+    FILE* f = fopen("/home/user/toolscreen.log", "a");
+    if (f) { va_list va; va_start(va, fmt); vfprintf(f, fmt, va); va_end(va); fclose(f); }
+}
+static void TRACE_CALL(const char* msg) {
+    int fd = open("/home/user/toolscreen_trace.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd >= 0) { write(fd, msg, strlen(msg)); close(fd); }
+}
+
 bool CreateHook(void* target, void* detour, void** original) {
     std::lock_guard<std::mutex> lock(g_hookMutex);
 
@@ -372,6 +384,7 @@ void glBlitFramebuffer(GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1,
 
 void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     PROFILE_SCOPE("glXSwapBuffers");
+    TRACE_CALL("[Toolscreen] hk_glXSwapBuffers called\n");
 
     // Deferred initialization — avoids conflicts with Java classloaders
     ToolscreenLazyInit();
@@ -493,12 +506,6 @@ void hk_glBlitFramebuffer(GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1,
 
 SwapBuffersFunc GetRealSwapBuffers() { return g_realSwapBuffers.load(); }
 bool IsHooked() { return g_realSwapBuffers.load() != nullptr; }
-
-// Helper: log to our file (stderr is discarded by Minecraft)
-static void HOOK_LOG(const char* fmt, ...) {
-    FILE* f = fopen("/home/user/toolscreen.log", "a");
-    if (f) { va_list va; va_start(va, fmt); vfprintf(f, fmt, va); va_end(va); fclose(f); }
-}
 
 // Runtime hook for dlopen-based injection.
 // Called from the constructor. Uses the existing inline hook engine to
