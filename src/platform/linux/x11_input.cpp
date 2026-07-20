@@ -49,13 +49,18 @@ bool Install(Window gameWindow) {
 
     g_gameWindow = gameWindow;
 
-    // Select input events on the game window
-    XSelectInput(dpy, gameWindow,
-                 KeyPressMask | KeyReleaseMask |
-                 ButtonPressMask | ButtonReleaseMask |
-                 PointerMotionMask | ButtonMotionMask |
-                 FocusChangeMask | StructureNotifyMask |
-                 ExposureMask | PropertyChangeMask);
+    // Select input events on the game window, MERGING with the game's existing mask
+    XWindowAttributes attrs;
+    long existingMask = 0;
+    if (XGetWindowAttributes(dpy, gameWindow, &attrs)) {
+        existingMask = attrs.your_event_mask;
+    }
+    long ourMask = KeyPressMask | KeyReleaseMask |
+                   ButtonPressMask | ButtonReleaseMask |
+                   PointerMotionMask | ButtonMotionMask |
+                   FocusChangeMask | StructureNotifyMask |
+                   ExposureMask | PropertyChangeMask;
+    XSelectInput(dpy, gameWindow, existingMask | ourMask);
 
     X11Display::Flush();
     g_installed.store(true);

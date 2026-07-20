@@ -80,6 +80,13 @@ bool CaptureScreen(int x, int y, int w, int h,
         }
 
         shmInfo.shmaddr = image->data = static_cast<char*>(shmat(shmInfo.shmid, nullptr, 0));
+        if (shmInfo.shmaddr == reinterpret_cast<void*>(-1)) {
+            XDestroyImage(image);
+            shmctl(shmInfo.shmid, IPC_RMID, nullptr);
+            goto fallback;
+        }
+        // Mark segment for deletion early — Linux defers until last detach
+        shmctl(shmInfo.shmid, IPC_RMID, nullptr);
         shmInfo.readOnly = False;
         XShmAttach(dpy, &shmInfo);
 
@@ -112,7 +119,6 @@ bool CaptureScreen(int x, int y, int w, int h,
         XShmDetach(dpy, &shmInfo);
         XDestroyImage(image);
         shmdt(shmInfo.shmaddr);
-        shmctl(shmInfo.shmid, IPC_RMID, nullptr);
         return true;
     }
 

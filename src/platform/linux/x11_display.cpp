@@ -190,60 +190,55 @@ Display* Get() { return g_display; }
 int GetScreen() { return g_screen; }
 Window GetRoot() { return g_root; }
 
-Window FindGameWindow() {
-    if (!g_display) return 0;
+// Recursively search a window and its children for a Minecraft/LWJGL window
+static Window SearchWindowTree(Display* dpy, Window win, Atom netWmName, Atom wmClass, int depth) {
+    if (depth > 5 || win == 0) return 0;
 
-    // Try to find the game window by searching for known LWJGL properties
-    // LWJGL sets _NET_WM_NAME and WM_CLASS to "Minecraft*"
-    Atom netWmName = XInternAtom(g_display, "_NET_WM_NAME", True);
-    Atom wmClass = XInternAtom(g_display, "WM_CLASS", True);
+    // Check this window
+    if (netWmName != None) {
+        Atom actualType; int actualFormat;
+        unsigned long nitems, bytesAfter;
+        unsigned char* prop = nullptr;
+        if (XGetWindowProperty(dpy, win, netWmName, 0, 1024, False, AnyPropertyType,
+                               &actualType, &actualFormat, &nitems, &bytesAfter, &prop) == Success && prop) {
+            std::string name(reinterpret_cast<char*>(prop));
+            XFree(prop);
+            if (name.find("Minecraft") != std::string::npos) return win;
+        }
+    }
+    if (wmClass != None) {
+        Atom actualType; int actualFormat;
+        unsigned long nitems, bytesAfter;
+        unsigned char* prop = nullptr;
+        if (XGetWindowProperty(dpy, win, wmClass, 0, 1024, False, AnyPropertyType,
+                               &actualType, &actualFormat, &nitems, &bytesAfter, &prop) == Success && prop) {
+            std::string klass(reinterpret_cast<char*>(prop));
+            XFree(prop);
+            if (klass.find("Minecraft") != std::string::npos || klass.find("lwjgl") != std::string::npos) return win;
+        }
+    }
 
-    Window root = RootWindow(g_display, g_screen);
-    Window parent, *children;
+    // Search children recursively
+    Window root, parent, *children;
     unsigned int nchildren;
-
-    if (XQueryTree(g_display, root, &root, &parent, &children, &nchildren)) {
+    if (XQueryTree(dpy, win, &root, &parent, &children, &nchildren) && nchildren > 0) {
         for (unsigned int i = 0; i < nchildren; ++i) {
-            // Check window name
-            if (netWmName != None) {
-                Atom actualType;
-                int actualFormat;
-                unsigned long nitems, bytesAfter;
-                unsigned char* prop = nullptr;
-                if (XGetWindowProperty(g_display, children[i], netWmName, 0, 1024,
-                                       False, AnyPropertyType,
-                                       &actualType, &actualFormat, &nitems, &bytesAfter, &prop) == Success && prop) {
-                    std::string name(reinterpret_cast<char*>(prop));
-                    XFree(prop);
-                    if (name.find("Minecraft") != std::string::npos) {
-                        Window result = children[i];
-                        XFree(children);
-                        return result;
-                    }
-                }
-            }
-            // Check window class
-            if (wmClass != None) {
-                Atom actualType;
-                int actualFormat;
-                unsigned long nitems, bytesAfter;
-                unsigned char* prop = nullptr;
-                if (XGetWindowProperty(g_display, children[i], wmClass, 0, 1024,
-                                       False, AnyPropertyType,
-                                       &actualType, &actualFormat, &nitems, &bytesAfter, &prop) == Success && prop) {
-                    std::string klass(reinterpret_cast<char*>(prop));
-                    XFree(prop);
-                    if (klass.find("Minecraft") != std::string::npos || klass.find("lwjgl") != std::string::npos) {
-                        Window result = children[i];
-                        XFree(children);
-                        return result;
-                    }
-                }
-            }
+            Window result = SearchWindowTree(dpy, children[i], netWmName, wmClass, depth + 1);
+            if (result != 0) { XFree(children); return result; }
         }
         XFree(children);
     }
     return 0;
+}
+
+Window FindGameWindow() {
+    if (!g_display) return 0;
+
+    Atom netWmName = XInternAtom(g_display, "_NET_WM_NAME", True);
+    Atom wmClass = XInternAtom(g_display, "WM_CLASS", True);
+
+    return SearchWindowTree(g_display, RootWindow(g_display, g_screen),
+                            netWmName, wmClass, 0);
 }
 
 void SetGameWindow(Window win) { g_gameWindow = win; }

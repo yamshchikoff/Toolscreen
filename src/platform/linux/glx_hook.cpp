@@ -292,13 +292,8 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             win = static_cast<Window>(currentDrawable);
             X11Display::SetGameWindow(win);
 
-            // Select input events on the game window
-            XSelectInput(dpy, win,
-                         KeyPressMask | KeyReleaseMask |
-                         ButtonPressMask | ButtonReleaseMask |
-                         PointerMotionMask | FocusChangeMask |
-                         StructureNotifyMask | ExposureMask);
-            X11Display::Flush();
+            // Note: XSelectInput is handled by X11Input::Install()
+            // to avoid overwriting the game's existing event mask.
         }
     }
 

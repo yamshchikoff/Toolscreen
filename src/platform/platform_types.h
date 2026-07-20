@@ -148,6 +148,14 @@ namespace Vk {
     inline constexpr PlatformVk F14        = 0x7D;
     inline constexpr PlatformVk F15        = 0x7E;
     inline constexpr PlatformVk F16        = 0x7F;
+    inline constexpr PlatformVk F17        = 0x80;
+    inline constexpr PlatformVk F18        = 0x81;
+    inline constexpr PlatformVk F19        = 0x82;
+    inline constexpr PlatformVk F20        = 0x83;
+    inline constexpr PlatformVk F21        = 0x84;
+    inline constexpr PlatformVk F22        = 0x85;
+    inline constexpr PlatformVk F23        = 0x86;
+    inline constexpr PlatformVk F24        = 0x87;
     inline constexpr PlatformVk NUMLOCK    = 0x90;
     inline constexpr PlatformVk SCROLL     = 0x91;
     inline constexpr PlatformVk LSHIFT     = 0xA0;

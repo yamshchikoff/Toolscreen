@@ -24,7 +24,11 @@ std::atomic<bool> g_translationsLoaded{false};
 
 // ---- Linux signal handler (replaces Windows SEH) ----
 #ifdef PLATFORM_LINUX
-void LinuxSignalHandler(int sig, siginfo_t* info, void* ctx) {
+void LinuxSignalHandler(int sig, siginfo_t* info, void* /*ctx*/) {
+    // Async-signal-safe only: write(), backtrace_symbols_fd(), signal(), raise()
+    // NO fprintf, malloc, free, backtrace_symbols — would deadlock if signal
+    // arrived while another thread held the malloc lock.
+
     const char* sigName = "UNKNOWN";
     switch (sig) {
         case SIGSEGV: sigName = "SIGSEGV"; break;
@@ -34,18 +38,17 @@ void LinuxSignalHandler(int sig, siginfo_t* info, void* ctx) {
         case SIGBUS:  sigName = "SIGBUS"; break;
     }
 
-    fprintf(stderr, "[Toolscreen] FATAL: Caught signal %d (%s) at address %p\n",
-            sig, sigName, info ? info->si_addr : nullptr);
+    // Build message with write() — no malloc, no fprintf
+    char buf[256];
+    int len = snprintf(buf, sizeof(buf),
+                       "[Toolscreen] FATAL: signal %d (%s) addr=%p\n",
+                       sig, sigName, info ? info->si_addr : nullptr);
+    if (len > 0) write(STDERR_FILENO, buf, static_cast<size_t>(len));
 
-    // Print stack trace
+    // Print stack trace using backtrace_symbols_fd — single syscall, no malloc
     void* trace[32];
     int traceSize = backtrace(trace, 32);
-    char** symbols = backtrace_symbols(trace, traceSize);
-    fprintf(stderr, "[Toolscreen] Stack trace:\n");
-    for (int i = 0; i < traceSize; ++i) {
-        fprintf(stderr, "  #%d %s\n", i, symbols[i]);
-    }
-    free(symbols);
+    backtrace_symbols_fd(trace, traceSize, STDERR_FILENO);
 
     // Re-raise with default handler
     signal(sig, SIG_DFL);
