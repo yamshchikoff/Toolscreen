@@ -109,10 +109,9 @@ void InstallJump(void* target, void* destination, uint8_t* backup) {
     // Make page writable
     size_t span = PageSpan(target, kJumpSize);
     if (mprotect(PageAlign(target), span, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
-        HOOK_LOG("[Toolscreen] mprotect FAILED for %p (span %zu): %s\n", target, span, strerror(errno));
+        fprintf(stderr, "[Toolscreen] mprotect FAILED for %p: %s\n", target, strerror(errno));
         return;
     }
-    HOOK_LOG("[Toolscreen] mprotect OK, writing jump at %p → %p\n", target, destination);
 
     // Fill with NOPs
     memset(target, 0x90, kJumpSize);
@@ -514,7 +513,13 @@ bool IsHooked() { return g_realSwapBuffers.load() != nullptr; }
 void InstallRuntimeHook() {
     static std::once_flag s_flag;
     std::call_once(s_flag, []() {
-        void* target = dlsym(RTLD_DEFAULT, "glXSwapBuffers");
+        // RTLD_NEXT skips our own .so and finds the real libGL's glXSwapBuffers
+        void* target = dlsym(RTLD_NEXT, "glXSwapBuffers");
+        if (!target) {
+            // Fallback: try via explicit libGL.so handle
+            void* libGL = dlopen("libGL.so.1", RTLD_LAZY | RTLD_NOLOAD);
+            if (libGL) target = dlsym(libGL, "glXSwapBuffers");
+        }
         if (!target) {
             HOOK_LOG("[Toolscreen] InstallRuntimeHook: glXSwapBuffers not found\n");
             return;
