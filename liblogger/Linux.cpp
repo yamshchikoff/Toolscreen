@@ -5,7 +5,6 @@
 
 #include <atomic>
 #include <chrono>
-#include <csignal>
 #include <cstring>
 #include <dlfcn.h>
 #include <cstdio>
@@ -13,17 +12,13 @@
 #include <fstream>
 #include <iomanip>
 #include <link.h>
-#include <mqueue.h>
 #include <mutex>
 #include <openssl/sha.h>
 #include <pthread.h>
 #include <sstream>
 #include <string>
 #include <string_view>
-#include <sys/ipc.h>
-#include <sys/shm.h>
 #include <sys/stat.h>
-#include <sys/wait.h>
 #include <thread>
 #include <unordered_set>
 #include <unistd.h>
@@ -66,11 +61,13 @@ static std::mutex g_seenHashesMutex;
 static std::thread g_initializationThread;
 static std::thread g_scannerThread;
 
-static int g_shmId = -1;
+// Heartbeat and event queue use in-process primitives (mutex + vector)
+// instead of IPC (shm/mq) to avoid fork() in a multithreaded JVM process.
 static HeartbeatData* g_heartbeatData = nullptr;
-static std::string g_messageQueueName;
-static mqd_t g_messageQueue = static_cast<mqd_t>(-1);
-static pid_t g_watchdogPid = -1;
+static std::mutex g_eventQueueMutex;
+static std::vector<SecurityEventMessage> g_eventQueue;
+static std::thread g_watchdogThread;
+static std::atomic<bool> g_watchdogStop{false};
 
 JavaVM* GetJavaVM() {
 	auto getCreatedJavaVMs = reinterpret_cast<PtrJNI_GetCreatedJavaVMs>(dlsym(RTLD_DEFAULT, "JNI_GetCreatedJavaVMs"));
@@ -596,12 +593,12 @@ void RecordModuleCallback(dl_phdr_info* info, size_t, void* data) {
 }
 
 void ProcessSecurityEventQueue() {
-	if (g_messageQueue == static_cast<mqd_t>(-1)) {
-		return;
+	std::vector<SecurityEventMessage> messages;
+	{
+		std::lock_guard<std::mutex> lock(g_eventQueueMutex);
+		messages.swap(g_eventQueue);
 	}
-
-	SecurityEventMessage message = {};
-	while (mq_receive(g_messageQueue, reinterpret_cast<char*>(&message), sizeof(message), nullptr) != -1) {
+	for (const auto& message : messages) {
 		LogToMinecraft(std::string("securityEvent ") + message.eventName + " " + message.eventData);
 	}
 }
@@ -625,15 +622,10 @@ static void RecordBaselineModules() {
 }
 
 void WatchdogMain(pid_t parentPid) {
-	const mqd_t childQueue = mq_open(g_messageQueueName.c_str(), O_WRONLY);
-	if (childQueue == static_cast<mqd_t>(-1)) {
-		_exit(1);
-	}
-
 	const std::string statusPath = "/proc/" + std::to_string(parentPid) + "/status";
 	pid_t lastKnownTracerPid = 0;
 
-	while (true) {
+	while (!g_watchdogStop.load(std::memory_order_relaxed)) {
 		std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
 		if (g_heartbeatData && g_heartbeatData->watchdogHeartbeat.load() < g_heartbeatData->parentHeartbeat.load()) {
@@ -666,50 +658,37 @@ void WatchdogMain(pid_t parentPid) {
 				", cmd=" + GetProcessCmdline(currentTracerPid);
 			std::strncpy(message.eventData, eventData.c_str(), sizeof(message.eventData) - 1);
 
-			mq_send(childQueue, reinterpret_cast<const char*>(&message), sizeof(message), 0);
+			// Push to in-process queue instead of POSIX mq
+			{
+				std::lock_guard<std::mutex> lock(g_eventQueueMutex);
+				g_eventQueue.push_back(message);
+			}
 		} else if (currentTracerPid == 0) {
 			lastKnownTracerPid = 0;
 		}
 	}
-
-	mq_close(childQueue);
-	_exit(0);
 }
 
 bool InitializeSecurityMonitoring() {
-	g_shmId = shmget(IPC_PRIVATE, sizeof(HeartbeatData), IPC_CREAT | 0666);
-	if (g_shmId < 0) {
-		return false;
-	}
-
-	g_heartbeatData = reinterpret_cast<HeartbeatData*>(shmat(g_shmId, nullptr, 0));
-	if (g_heartbeatData == reinterpret_cast<void*>(-1)) {
-		g_heartbeatData = nullptr;
+	// Allocate heartbeat data on the heap (shared between main and watchdog thread
+	// via raw pointer — both are in the same process, no IPC needed).
+	g_heartbeatData = new (std::nothrow) HeartbeatData();
+	if (!g_heartbeatData) {
 		return false;
 	}
 	g_heartbeatData->parentHeartbeat = 0;
 	g_heartbeatData->watchdogHeartbeat = 0;
 
-	g_messageQueueName = "/mc_security_mq_" + std::to_string(getpid());
-	mq_unlink(g_messageQueueName.c_str());
-
-	mq_attr attributes = {};
-	attributes.mq_flags = 0;
-	attributes.mq_maxmsg = 10;
-	attributes.mq_msgsize = sizeof(SecurityEventMessage);
-	attributes.mq_curmsgs = 0;
-	g_messageQueue = mq_open(g_messageQueueName.c_str(), O_CREAT | O_RDONLY | O_NONBLOCK, 0644, &attributes);
-	if (g_messageQueue == static_cast<mqd_t>(-1)) {
-		return false;
-	}
-
-	g_watchdogPid = fork();
-	if (g_watchdogPid == 0) {
-		WatchdogMain(getppid());
-	}
-
-	if (g_watchdogPid < 0) {
-		g_watchdogPid = -1;
+	// Start watchdog as a thread instead of fork() to avoid
+	// deadlocks from orphaned mutexes in a multithreaded JVM process.
+	const pid_t parentPid = getpid();
+	try {
+		g_watchdogThread = std::thread([parentPid]() {
+			WatchdogMain(parentPid);
+		});
+	} catch (const std::exception&) {
+		delete g_heartbeatData;
+		g_heartbeatData = nullptr;
 		return false;
 	}
 
@@ -834,10 +813,10 @@ void EnsureInitialized() {
 void Cleanup() {
 	g_scannerThreadShouldRun.store(false);
 
-	if (g_watchdogPid > 0) {
-		kill(g_watchdogPid, SIGTERM);
-		waitpid(g_watchdogPid, nullptr, 0);
-		g_watchdogPid = -1;
+	// Stop the in-process watchdog thread
+	g_watchdogStop.store(true);
+	if (g_watchdogThread.joinable() && g_watchdogThread.get_id() != std::this_thread::get_id()) {
+		g_watchdogThread.join();
 	}
 
 	if (g_initializationThread.joinable() && g_initializationThread.get_id() != std::this_thread::get_id()) {
@@ -847,20 +826,16 @@ void Cleanup() {
 		g_scannerThread.join();
 	}
 
-	if (g_messageQueue != static_cast<mqd_t>(-1)) {
-		mq_close(g_messageQueue);
-		mq_unlink(g_messageQueueName.c_str());
-		g_messageQueue = static_cast<mqd_t>(-1);
-	}
-	g_messageQueueName.clear();
-
+	// Free heap-allocated heartbeat data (was shm, now plain heap)
 	if (g_heartbeatData) {
-		shmdt(g_heartbeatData);
+		delete g_heartbeatData;
 		g_heartbeatData = nullptr;
 	}
-	if (g_shmId != -1) {
-		shmctl(g_shmId, IPC_RMID, nullptr);
-		g_shmId = -1;
+
+	// Clear the in-process event queue
+	{
+		std::lock_guard<std::mutex> lock(g_eventQueueMutex);
+		g_eventQueue.clear();
 	}
 
 	{
