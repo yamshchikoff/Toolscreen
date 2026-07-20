@@ -52,7 +52,9 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <winhttp.h>
+#ifdef _WIN32
 #include <windowsx.h>
+#endif
 
 #pragma comment(lib, "Shlwapi.lib")
 #pragma comment(lib, "Winhttp.lib")

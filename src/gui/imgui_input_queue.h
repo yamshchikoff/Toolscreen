@@ -5,7 +5,9 @@
 // Consumer: the render path thread where the ImGui context lives.
 // Goal: avoid *any* ImGui calls from non-render threads.
 
-#include <Windows.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #include <atomic>
 

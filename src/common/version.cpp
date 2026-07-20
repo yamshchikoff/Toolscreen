@@ -6,7 +6,9 @@
 #include <iostream>
 #include <regex>
 #include <sstream>
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 std::string GetToolscreenVersionString() { return TOOLSCREEN_VERSION_STRING; }
 

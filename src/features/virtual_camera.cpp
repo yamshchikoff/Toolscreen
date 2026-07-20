@@ -11,7 +11,9 @@
 #include <mutex>
 #include <string>
 #include <vector>
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 extern std::atomic<HWND> g_minecraftHwnd;
 extern Config g_config;

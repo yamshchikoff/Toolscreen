@@ -1,7 +1,9 @@
 #pragma once
 
 #include <atomic>
-#include <Windows.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #include <string>
 
 extern WNDPROC g_originalWndProc;

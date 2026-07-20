@@ -4,7 +4,9 @@
 #define GLEW_STATIC
 #endif
 #include <GL/glew.h>
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 #include "common/utils.h"
 

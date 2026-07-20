@@ -27,7 +27,9 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#ifdef _WIN32
 #include <windowsx.h>
+#endif
 
 extern std::atomic<bool> g_showGui;
 extern std::atomic<bool> g_glfwCursorGrabbed;

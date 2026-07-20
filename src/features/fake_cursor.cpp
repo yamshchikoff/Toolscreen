@@ -6,7 +6,9 @@
 #include <shared_mutex>
 #include <string>
 #include <vector>
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 void Log(const std::string& msg);
 

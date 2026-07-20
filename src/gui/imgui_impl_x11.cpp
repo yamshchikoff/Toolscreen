@@ -18,14 +18,18 @@ Display* g_display = nullptr;
 Window g_window = 0;
 struct timeval g_startTime;
 
-// Keyboard state tracking
-bool g_keyDown[512] = {};
-
-// Mouse state
+// Mouse state (tracked from events, not polled from X11)
 int g_mouseX = 0, g_mouseY = 0;
 bool g_mouseButtons[5] = {};
+float g_mouseWheel = 0.0f;
 
-// Convert X11 KeySym to ImGuiKey
+// Modifier state tracked from X11 key events (not LED indicators)
+bool g_keyCtrl  = false;
+bool g_keyShift = false;
+bool g_keyAlt   = false;
+bool g_keySuper = false;
+
+// Convert X11 KeySym to ImGuiKey (v1.92.6+ ImGuiKey enum)
 ImGuiKey X11KeySymToImGuiKey(KeySym keysym) {
     switch (keysym) {
         case XK_Tab:        return ImGuiKey_Tab;
@@ -152,33 +156,9 @@ bool ImGui_ImplX11_Init(Display* display, Window window) {
 
     ImGuiIO& io = ImGui::GetIO();
     io.BackendPlatformName = "imgui_impl_x11";
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
-    // Setup keyboard mapping
-    io.KeyMap[ImGuiKey_Tab]         = XK_Tab;
-    io.KeyMap[ImGuiKey_LeftArrow]   = XK_Left;
-    io.KeyMap[ImGuiKey_RightArrow]  = XK_Right;
-    io.KeyMap[ImGuiKey_UpArrow]     = XK_Up;
-    io.KeyMap[ImGuiKey_DownArrow]   = XK_Down;
-    io.KeyMap[ImGuiKey_PageUp]      = XK_Page_Up;
-    io.KeyMap[ImGuiKey_PageDown]    = XK_Page_Down;
-    io.KeyMap[ImGuiKey_Home]        = XK_Home;
-    io.KeyMap[ImGuiKey_End]         = XK_End;
-    io.KeyMap[ImGuiKey_Insert]      = XK_Insert;
-    io.KeyMap[ImGuiKey_Delete]      = XK_Delete;
-    io.KeyMap[ImGuiKey_Backspace]   = XK_BackSpace;
-    io.KeyMap[ImGuiKey_Space]       = XK_space;
-    io.KeyMap[ImGuiKey_Enter]       = XK_Return;
-    io.KeyMap[ImGuiKey_Escape]      = XK_Escape;
-    io.KeyMap[ImGuiKey_LeftCtrl]    = XK_Control_L;
-    io.KeyMap[ImGuiKey_LeftShift]   = XK_Shift_L;
-    io.KeyMap[ImGuiKey_LeftAlt]     = XK_Alt_L;
-    io.KeyMap[ImGuiKey_LeftSuper]   = XK_Super_L;
-    io.KeyMap[ImGuiKey_RightCtrl]   = XK_Control_R;
-    io.KeyMap[ImGuiKey_RightShift]  = XK_Shift_R;
-    io.KeyMap[ImGuiKey_RightAlt]    = XK_Alt_R;
-    io.KeyMap[ImGuiKey_RightSuper]  = XK_Super_R;
-
-    fprintf(stderr, "[Toolscreen] ImGui X11 backend initialized\n");
+    fprintf(stderr, "[Toolscreen] ImGui X11 backend initialized (API v1.92+)\n");
     return true;
 }
 
@@ -191,10 +171,11 @@ void ImGui_ImplX11_NewFrame() {
     ImGuiIO& io = ImGui::GetIO();
 
     // Update time
-    io.DeltaTime = GetTimeSinceStart() - io.Time;
-    io.Time = GetTimeSinceStart();
+    double now = GetTimeSinceStart();
+    io.DeltaTime = static_cast<float>(now - io.Time);
+    io.Time = now;
 
-    // Update mouse state from X11
+    // Update mouse position from X11 (v1.92+ API)
     if (g_display && g_window) {
         Window root, child;
         int rootX, rootY, winX, winY;
@@ -206,33 +187,45 @@ void ImGui_ImplX11_NewFrame() {
         }
     }
 
-    io.MousePos = ImVec2(static_cast<float>(g_mouseX), static_cast<float>(g_mouseY));
-    io.MouseDown[0] = g_mouseButtons[0];
-    io.MouseDown[1] = g_mouseButtons[1];
-    io.MouseDown[2] = g_mouseButtons[2];
+    io.AddMousePosEvent(static_cast<float>(g_mouseX), static_cast<float>(g_mouseY));
 
-    // Modifier keys via XKB
-    if (g_display) {
-        unsigned int mods;
-        XkbGetIndicatorState(g_display, XkbUseCoreKbd, &mods);
-        io.KeyCtrl  = (mods & 0x04) != 0;  // Control mask in XKB
-        io.KeyShift = (mods & 0x01) != 0;  // Shift mask in XKB
-        io.KeyAlt   = (mods & 0x08) != 0;  // Alt/Mod1 mask in XKB
-        io.KeySuper = (mods & 0x40) != 0;  // Mod4/Super mask in XKB
+    // Flush pending mouse button events (set by HandleMouseButtonEvent)
+    for (int i = 0; i < 5; ++i) {
+        io.AddMouseButtonEvent(i, g_mouseButtons[i]);
     }
+
+    // Flush pending mouse wheel
+    if (g_mouseWheel != 0.0f) {
+        io.AddMouseWheelEvent(0.0f, g_mouseWheel);
+        g_mouseWheel = 0.0f;
+    }
+
+    // Modifier state (tracked from key events, not LED indicators)
+    io.AddKeyEvent(ImGuiKey_ModCtrl,  g_keyCtrl);
+    io.AddKeyEvent(ImGuiKey_ModShift, g_keyShift);
+    io.AddKeyEvent(ImGuiKey_ModAlt,   g_keyAlt);
+    io.AddKeyEvent(ImGuiKey_ModSuper, g_keySuper);
 }
 
 bool ImGui_ImplX11_HandleKeyEvent(unsigned int keycode, bool isDown, unsigned int state) {
     if (!g_display) return false;
 
+    // Track modifier state from key events
     KeySym keysym = XkbKeycodeToKeysym(g_display, keycode, 0,
                                         state & ShiftMask ? 1 : 0);
-    ImGuiKey imKey = X11KeySymToImGuiKey(keysym);
-    if (imKey != ImGuiKey_None) {
-        ImGui::GetIO().KeysDown[imKey] = isDown;
+    switch (keysym) {
+        case XK_Control_L: case XK_Control_R: g_keyCtrl  = isDown; break;
+        case XK_Shift_L:   case XK_Shift_R:   g_keyShift = isDown; break;
+        case XK_Alt_L:     case XK_Alt_R:     g_keyAlt   = isDown; break;
+        case XK_Super_L:   case XK_Super_R:   g_keySuper = isDown; break;
+        default: break;
     }
 
-    // WantCaptureKeyboard check
+    ImGuiKey imKey = X11KeySymToImGuiKey(keysym);
+    if (imKey != ImGuiKey_None) {
+        ImGui::GetIO().AddKeyEvent(imKey, isDown);
+    }
+
     return ImGui::GetIO().WantCaptureKeyboard;
 }
 
@@ -250,7 +243,6 @@ bool ImGui_ImplX11_HandleCharEvent(unsigned int charCode) {
 bool ImGui_ImplX11_HandleMouseButtonEvent(int button, bool isDown) {
     if (button >= 0 && button < 5) {
         g_mouseButtons[button] = isDown;
-        ImGui::GetIO().MouseDown[button] = isDown;
     }
     return ImGui::GetIO().WantCaptureMouse;
 }
@@ -262,7 +254,7 @@ bool ImGui_ImplX11_HandleMouseMotionEvent(int x, int y) {
 }
 
 bool ImGui_ImplX11_HandleMouseWheelEvent(int delta) {
-    ImGui::GetIO().MouseWheel += delta / 120.0f;
+    g_mouseWheel += delta / 120.0f;
     return ImGui::GetIO().WantCaptureMouse;
 }
 

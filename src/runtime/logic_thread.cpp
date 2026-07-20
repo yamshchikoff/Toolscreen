@@ -6,7 +6,9 @@
 #include "render/render.h"
 #include "common/utils.h"
 #include "version.h"
-#include <Windows.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #include <unordered_map>
 #include <unordered_set>
 #include <thread>

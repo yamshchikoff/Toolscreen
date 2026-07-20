@@ -15,7 +15,9 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 #include "gui/gui.h"
 #include "features/game_state_source.h"

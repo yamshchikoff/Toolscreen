@@ -12,7 +12,9 @@
 #include <unordered_map>
 #include <string>
 #include <vector>
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 #include "gui/gui.h"
 #include "mirror_thread.h"

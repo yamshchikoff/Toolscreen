@@ -4,7 +4,9 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 struct BundledFontAsset {
     const char* id = nullptr;

@@ -12,7 +12,9 @@
 #include <filesystem>
 #include <future>
 #include <map>
+#ifdef _WIN32
 #include <windowsx.h>
+#endif
 
 #pragma comment(lib, "Shlwapi.lib")
 

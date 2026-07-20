@@ -9,7 +9,9 @@
 #include "runtime/logic_thread.h"
 #include "common/mode_dimensions.h"
 
-#include <Windows.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #include <algorithm>
 #include <filesystem>

@@ -19,7 +19,12 @@
 #include "features/virtual_camera.h"
 #include "features/window_overlay.h"
 #include "imgui_impl_opengl3.h"
+#ifdef PLATFORM_LINUX
+#include "gui/imgui_impl_x11.h"
+#include "platform/linux/x11_input.h"
+#else
 #include "imgui_impl_win32.h"
+#endif
 #include <Shlwapi.h>
 #include <cctype>
 #include <algorithm>
@@ -4953,7 +4958,12 @@ static void RenderSameThreadImGui(const SameThreadOverlayState& request, bool re
         {
             PROFILE_SCOPE_CAT("ImGui Backend NewFrame", "ImGui");
             ImGui_ImplOpenGL3_NewFrame();
+#ifdef PLATFORM_LINUX
+            X11Input::PollEvents();
+            ImGui_ImplX11_NewFrame();
+#else
             ImGui_ImplWin32_NewFrame();
+#endif
         }
         {
             PROFILE_SCOPE_CAT("ImGui Display Metrics Sync", "ImGui");

@@ -2,7 +2,9 @@
 
 #include <GL/glew.h>
 #include <atomic>
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 // OBS capture redirect state used by the main glBlitFramebuffer hook.
 

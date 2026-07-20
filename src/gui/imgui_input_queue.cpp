@@ -4,7 +4,9 @@
 
 #include <array>
 
+#ifdef _WIN32
 #include <windowsx.h>
+#endif
 
 // Forward declaration (defined in imgui_impl_win32.cpp, not exposed in the header)
 ImGuiKey ImGui_ImplWin32_KeyEventToImGuiKey(WPARAM wParam, LPARAM lParam);

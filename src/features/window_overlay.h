@@ -13,7 +13,9 @@
 #include <string>
 #include <thread>
 #include <vector>
+#ifdef _WIN32
 #include <windows.h>
+#endif
 
 struct WindowOverlayConfig;
 struct Color;
