@@ -3546,6 +3546,7 @@ static std::vector<NinjabrainPresetDefinition> s_embeddedNinjabrainPresetsCache;
 static bool s_embeddedNinjabrainPresetsLoaded = false;
 
 static std::string LoadEmbeddedRcDataString(int resourceId, const char* debugName) {
+#ifdef _WIN32
     HMODULE hModule = nullptr;
     if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                             reinterpret_cast<LPCWSTR>(&LoadEmbeddedRcDataString), &hModule)) {
@@ -3573,6 +3574,19 @@ static std::string LoadEmbeddedRcDataString(int resourceId, const char* debugNam
     }
 
     return std::string(data, size);
+#else
+    // Linux: try loading from filesystem relative to the .so
+    (void)resourceId;
+    std::string path = std::string("defaults/") + debugName + ".toml";
+    std::ifstream file(path);
+    if (file) {
+        std::string content((std::istreambuf_iterator<char>(file)),
+                            std::istreambuf_iterator<char>());
+        return content;
+    }
+    Log(std::string("WARNING: Embedded resource not found on Linux: ") + path);
+    return "";
+#endif
 }
 
 std::string GetEmbeddedDefaultConfigString() {

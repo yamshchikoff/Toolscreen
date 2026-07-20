@@ -95,6 +95,29 @@ std::string FileNameForDisplay(const std::string& path) {
 }
 
 #else
-// Linux stubs — path sanitisation is Windows-specific (drive letters, USERPROFILE)
-static inline std::wstring SanitizePathForDisplay(const std::wstring& path) { return path; }
+// Linux: home-directory based sanitisation
+namespace {
+std::wstring ResolveUserHomeDir() {
+    const char* home = getenv("HOME");
+    if (home) {
+        std::string h(home);
+        return std::wstring(h.begin(), h.end());
+    }
+    return L"";
+}
+
+std::wstring SanitizePathForDisplayImpl(const std::wstring& path, const std::wstring& homeDir) {
+    if (path.empty() || homeDir.empty()) { return path; }
+    if (path.find(homeDir) == 0) {
+        std::wstring result = L"~" + path.substr(homeDir.size());
+        return result;
+    }
+    return path;
+}
+} // namespace
+
+std::wstring SanitizePathForDisplay(const std::wstring& path) {
+    static const std::wstring homeDir = ResolveUserHomeDir();
+    return SanitizePathForDisplayImpl(path, homeDir);
+}
 #endif

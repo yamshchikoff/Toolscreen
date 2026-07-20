@@ -396,7 +396,11 @@ namespace Vk {
 
     // Additional Win32 types
     union LARGE_INTEGER { int64_t QuadPart; struct { int32_t LowPart; int32_t HighPart; } u; };
-    struct IMAGE_CURSOR { int dummy; };  // Stub — Xcursor handles cursors on Linux
+    #define IMAGE_CURSOR 2
+    #define IMAGE_ICON 1
+    #define IMAGE_BITMAP 0
+    #define LR_DEFAULTSIZE 0x0040
+    #define LR_COPYFROMRESOURCE 0x4000
     #define ERROR_ACCESS_DENIED 5L
     #define ERROR_LOCK_VIOLATION 33L
     #define ERROR_FILE_NOT_FOUND 2L
@@ -465,14 +469,86 @@ namespace Vk {
     #define FILE_ATTRIBUTE_DIRECTORY 0x10
 
     // Additional stubs
-    struct IMAGE_ICON { int dummy; };
     inline int DestroyIcon(void*) { return 1; }
+    // FormatMessage stubs
+    #define FORMAT_MESSAGE_ALLOCATE_BUFFER 0x100
+    #define FORMAT_MESSAGE_FROM_SYSTEM 0x1000
+    #define FORMAT_MESSAGE_IGNORE_INSERTS 0x200
+    #define LANG_NEUTRAL 0
+    #define SUBLANG_DEFAULT 1
+    #define MAKELANGID(a, b) ((static_cast<unsigned short>(a)) | (static_cast<unsigned short>(b) << 10))
+    inline unsigned long FormatMessageA(unsigned long, const void*, unsigned long, unsigned long, char* buf, unsigned long, void*) {
+        const char* msg = strerror(errno);
+        if (buf) { strncpy(buf, msg, 255); buf[255] = '\0'; }
+        return static_cast<unsigned long>(strlen(buf));
+    }
+    using HLOCAL = void*;
+    inline HLOCAL LocalFree(void*) { return nullptr; }
+
+    // CaptureStackBackTrace polyfill
+    #include <execinfo.h>
+    inline unsigned short CaptureStackBackTrace(unsigned long, unsigned long, void** frames, unsigned long*) {
+        return static_cast<unsigned short>(::backtrace(frames, 32));
+    }
+
+    // localtime_s polyfill
+    inline int localtime_s(struct tm* result, const time_t* timer) {
+        struct tm* t = localtime_r(timer, result);
+        return t ? 0 : 1;
+    }
+
+    // Window stubs (no-op on Linux)
+    inline int IsWindow(void*) { return 1; }
+    inline void* GetForegroundWindow() { return nullptr; }
+
     inline void TerminateProcess(void*, unsigned int) { ::_exit(1); }
     inline unsigned long GetLastError() { return static_cast<unsigned long>(errno); }
     inline unsigned long GetCurrentThreadId() { return static_cast<unsigned long>(syscall(SYS_gettid)); }
-    inline int GetSystemMetrics(int) { return 0; }
+    inline int GetSystemMetrics(int) { return 1920; }
     #define SM_CXSCREEN 0
     #define SM_CYSCREEN 1
+
+    // More Win32 stubs
+    #define GA_ROOTOWNER 3
+    inline void* GetAncestor(void*, int) { return nullptr; }
+    #define MOVEFILE_REPLACE_EXISTING 1
+    #define MOVEFILE_WRITE_THROUGH 8
+    inline int MoveFileExW(const wchar_t*, const wchar_t*, unsigned long) { return 0; }
+    struct FILETIME { unsigned long dwLowDateTime; unsigned long dwHighDateTime; };
+    union ULARGE_INTEGER { uint64_t QuadPart; struct { unsigned long LowPart; unsigned long HighPart; } u; };
+    inline int SystemTimeToFileTime(const void*, FILETIME*) { return 0; }
+    inline int FileTimeToSystemTime(const FILETIME*, void*) { return 0; }
+    inline int LocalFileTimeToFileTime(const FILETIME*, FILETIME*) { return 0; }
+    inline int FileTimeToLocalFileTime(const FILETIME*, FILETIME*) { return 0; }
+    inline int CompareFileTime(const FILETIME*, const FILETIME*) { return 0; }
+
+    // Window manipulation stubs
+    inline int GetWindowThreadProcessId(void*, unsigned long*) { return 0; }
+    inline intptr_t GetWindowLongPtr(void*, int) { return 0; }
+    inline intptr_t SetWindowLongPtr(void*, int, intptr_t) { return 0; }
+    #define GWL_STYLE (-16)
+    #define GWL_EXSTYLE (-20)
+    #define WS_POPUP 0x80000000L
+    #define WS_VISIBLE 0x10000000L
+    #define WS_EX_TOPMOST 8
+    #define HWND_TOPMOST reinterpret_cast<void*>(-1)
+    inline int SetWindowPos(void*, void*, int, int, int, int, unsigned int) { return 0; }
+    #define SWP_NOMOVE 2
+    #define SWP_NOSIZE 1
+    #define SWP_NOZORDER 4
+    #define SWP_FRAMECHANGED 0x20
+    #define HWND_NOTOPMOST reinterpret_cast<void*>(-2)
+
+    // Clipboard stub
+    inline void* GlobalLock(void*) { return nullptr; }
+    inline int GlobalUnlock(void*) { return 0; }
+    inline int OpenClipboard(void*) { return 0; }
+    inline int CloseClipboard() { return 0; }
+    inline int EmptyClipboard() { return 0; }
+    inline void* SetClipboardData(unsigned int, void*) { return nullptr; }
+    #define CF_TEXT 1
+    #define CF_UNICODETEXT 13
+    #define CF_BITMAP 2
 
     // GetCurrentProcessId polyfill
     inline unsigned long GetCurrentProcessId() { return static_cast<unsigned long>(::getpid()); }

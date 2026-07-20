@@ -121,6 +121,7 @@ void LoadLangs() {
         Log(std::string("Failed to load language list: ") + e.what());
     }
 }
+} // anonymous namespace (Linux)
 #endif
 
 const nlohmann::json& GetLangs() {

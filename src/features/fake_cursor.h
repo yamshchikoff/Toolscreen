@@ -15,7 +15,11 @@
 
 namespace CursorTextures {
 struct CursorData {
+#ifdef _WIN32
     HCURSOR hCursor = nullptr;    // Windows cursor handle
+#else
+    void* hCursor = nullptr;      // Linux: opaque
+#endif
     int size = 0;
     std::wstring filePath;
     GLuint texture = 0;
