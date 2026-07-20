@@ -227,6 +227,9 @@ void SetWindowTitle(Window win, const std::string& title) {
     X11Display::Flush();
 }
 
+// NOTE: different from X11Cursor::IsCursorVisible() — this checks
+// whether the pointer is physically inside the window (XQueryPointer),
+// while X11Cursor::IsCursorVisible() returns the logical show/hide flag.
 bool IsCursorVisible() {
     Display* dpy = X11Display::Get();
     if (!dpy) return true;

@@ -219,6 +219,9 @@ void ImGui_ImplX11_NewFrame() {
 bool ImGui_ImplX11_HandleKeyEvent(unsigned int keycode, bool isDown, unsigned int state) {
     if (!g_display) return false;
 
+    // TODO: dead key composition — XFilterEvent + XLookupString
+    // would enable diacritical marks (^, ´, `) on European layouts.
+
     // Track modifier state from key events.
     // Always query level 0 — modifier keysyms (Shift_L, Alt_R, etc.) are
     // independent of Shift state, and Shift+Alt_R may produce XK_Mode_switch

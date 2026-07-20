@@ -386,7 +386,9 @@ bool GetMonitorGeometry(int index, PlatformRect& outRect, bool& outIsPrimary) {
     return true;
 }
 
-uint32_t X11KeyToVk(KeySym keysym, unsigned int /*keycode*/, unsigned int /*state*/) {
+uint32_t X11KeyToVk(KeySym keysym, unsigned int /*keycode*/, unsigned int state) {
+    // TODO: use `state` to handle CapsLock/NumLock modifiers for correct
+    // key identification when those locks are active.
     // Direct keysym mapping
     auto& map = GetKeysymToVkMap();
     auto it = map.find(keysym);

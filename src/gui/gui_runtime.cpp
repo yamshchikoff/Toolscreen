@@ -14,6 +14,9 @@
 #include "third_party/stb_image.h"
 
 #include <GL/glew.h>
+#ifdef PLATFORM_LINUX
+#include <GL/glx.h>
+#endif
 #include <array>
 #include <algorithm>
 #include <chrono>
@@ -424,7 +427,13 @@ void HandleImGuiContextReset() {
 
 void InitializeImGuiContext(HWND hwnd) {
     std::lock_guard<std::recursive_mutex> imguiLock(GetImGuiContextMutex());
-    const HGLRC currentGlContext = wglGetCurrentContext();
+    // TODO: use glXGetCurrentContext() on Linux instead of wglGetCurrentContext()
+    const HGLRC currentGlContext =
+#ifdef PLATFORM_LINUX
+        static_cast<HGLRC>(glXGetCurrentContext());
+#else
+        wglGetCurrentContext();
+#endif
     if (s_mainThreadImGuiContext != nullptr && currentGlContext != NULL && s_mainThreadImGuiGlContext != NULL &&
         currentGlContext != s_mainThreadImGuiGlContext) {
         Log("Main-thread ImGui detected WGL context change; recreating context.");

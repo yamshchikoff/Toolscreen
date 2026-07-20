@@ -257,7 +257,7 @@ std::vector<WindowInfo> EnumerateWindows() {
                 WindowInfo info;
                 info.handle = windows[i];
 
-                // Get name
+                // Get name (_NET_WM_NAME is UTF-8, correctly handles non-ASCII titles)
                 unsigned char* nameProp = nullptr;
                 if (XGetWindowProperty(dpy, windows[i], netWmName, 0, 1024, False,
                                        AnyPropertyType, &actualType, &actualFormat,
