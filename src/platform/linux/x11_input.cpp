@@ -281,14 +281,14 @@ void SendChar(uint32_t charCode) {
     KeySym baseKeysym = XkbKeycodeToKeysym(dpy, keycode, 0, 0);
     bool needsShift = (baseKeysym != keysym);
 
+    unsigned int shiftKeycode = 0;
     if (needsShift) {
-        unsigned int shiftKeycode = XKeysymToKeycode(dpy, XK_Shift_L);
+        shiftKeycode = XKeysymToKeycode(dpy, XK_Shift_L);
         XTestFakeKeyEvent(dpy, shiftKeycode, True, CurrentTime);
     }
     XTestFakeKeyEvent(dpy, keycode, True, CurrentTime);
     XTestFakeKeyEvent(dpy, keycode, False, CurrentTime);
     if (needsShift) {
-        unsigned int shiftKeycode = XKeysymToKeycode(dpy, XK_Shift_L);
         XTestFakeKeyEvent(dpy, shiftKeycode, False, CurrentTime);
     }
     X11Display::Flush();

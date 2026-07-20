@@ -70,12 +70,11 @@ void CopyXImageToRGBA(const XImage* image, int w, int h,
         const int gbits = __builtin_popcountl(gm);
         const int bbits = __builtin_popcountl(bm);
 
-        // Scale N-bit value to 8-bit: for 5 bits (0-31) → (v<<3)|(v>>2)
-        // Helper lambda
+        // Scale N-bit value to 8-bit: v * 255 / (2^bits - 1)
         auto scaleTo8 = [](unsigned long v, int bits) -> uint8_t {
             if (bits >= 8) return static_cast<uint8_t>(v);
-            int shiftUp = 8 - bits;
-            return static_cast<uint8_t>((v << shiftUp) | (v >> (bits - shiftUp > 0 ? bits - shiftUp : 0)));
+            unsigned int maxVal = (1u << bits) - 1;
+            return static_cast<uint8_t>((v * 255u + maxVal / 2) / maxVal); // rounded
         };
 
         for (int row = 0; row < h; ++row) {

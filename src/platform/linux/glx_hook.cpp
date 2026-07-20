@@ -4,6 +4,8 @@
 
 #include "glx_hook.h"
 #include "x11_display.h"
+#include "platform/linux/x11_input.h"
+#include "gui/imgui_impl_x11.h"
 #include "common/profiler.h"
 
 #ifdef PLATFORM_LINUX
@@ -145,6 +147,43 @@ void* CreateTrampoline(void* target, const uint8_t* backup) {
 
     mprotect(tramp, trampSize, PROT_READ | PROT_EXEC);
     return tramp;
+}
+
+// Routes X11 input events to ImGui. Called from X11Input::PollEvents() via
+// the event callback set up when the game window is first detected.
+bool g_inputWired = false;
+
+bool RouteX11EventToImGui(const X11Input::InputEvent& ev) {
+    using ET = X11Input::EventType;
+    switch (ev.type) {
+    case ET::KeyDown:
+        return ImGui_ImplX11_HandleKeyEvent(ev.scanCode, true, 0);
+    case ET::KeyUp:
+        return ImGui_ImplX11_HandleKeyEvent(ev.scanCode, false, 0);
+    case ET::MouseDown: {
+        // Map Vk mouse codes to ImGui button indices (0=left, 1=right, 2=middle)
+        int btn = -1;
+        if (ev.vkCode == Vk::MOUSE_LEFT)   btn = 0;
+        if (ev.vkCode == Vk::MOUSE_RIGHT)  btn = 1;
+        if (ev.vkCode == Vk::MOUSE_MIDDLE) btn = 2;
+        if (btn >= 0) return ImGui_ImplX11_HandleMouseButtonEvent(btn, true);
+        return false;
+    }
+    case ET::MouseUp: {
+        int btn = -1;
+        if (ev.vkCode == Vk::MOUSE_LEFT)   btn = 0;
+        if (ev.vkCode == Vk::MOUSE_RIGHT)  btn = 1;
+        if (ev.vkCode == Vk::MOUSE_MIDDLE) btn = 2;
+        if (btn >= 0) return ImGui_ImplX11_HandleMouseButtonEvent(btn, false);
+        return false;
+    }
+    case ET::MouseMove:
+        return ImGui_ImplX11_HandleMouseMotionEvent(ev.mouseX, ev.mouseY);
+    case ET::MouseWheel:
+        return ImGui_ImplX11_HandleMouseWheelEvent(ev.mouseDelta);
+    default:
+        return false;
+    }
 }
 
 } // namespace
@@ -328,6 +367,14 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
         if (currentDrawable) {
             Window win = static_cast<Window>(currentDrawable);
             X11Display::SetGameWindow(win);
+
+            // Wire up X11 input → ImGui bridge on first detection
+            if (!g_inputWired) {
+                X11Input::Install(win);
+                ImGui_ImplX11_Init(X11Display::Get(), win);
+                X11Input::SetEventCallback(RouteX11EventToImGui);
+                g_inputWired = true;
+            }
         }
     }
 
@@ -345,7 +392,9 @@ void hk_glViewport(GLint x, GLint y, GLsizei width, GLsizei height) {
     // TODO: Mode viewport override logic from dllmain.cpp
 
     if (g_realViewport) {
+        internalCall = true;
         g_realViewport(x, y, width, height);
+        internalCall = false;
     }
 }
 
