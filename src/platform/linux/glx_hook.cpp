@@ -494,6 +494,12 @@ void hk_glBlitFramebuffer(GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1,
 SwapBuffersFunc GetRealSwapBuffers() { return g_realSwapBuffers.load(); }
 bool IsHooked() { return g_realSwapBuffers.load() != nullptr; }
 
+// Helper: log to our file (stderr is discarded by Minecraft)
+static void HOOK_LOG(const char* fmt, ...) {
+    FILE* f = fopen("/home/user/toolscreen.log", "a");
+    if (f) { va_list va; va_start(va, fmt); vfprintf(f, fmt, va); va_end(va); fclose(f); }
+}
+
 // Runtime hook for dlopen-based injection.
 // Called from the constructor. Uses the existing inline hook engine to
 // redirect glXSwapBuffers → hk_glXSwapBuffers in the already-running process.
@@ -502,15 +508,15 @@ void InstallRuntimeHook() {
     std::call_once(s_flag, []() {
         void* target = dlsym(RTLD_DEFAULT, "glXSwapBuffers");
         if (!target) {
-            fprintf(stderr, "[Toolscreen] InstallRuntimeHook: glXSwapBuffers not found\n");
+            HOOK_LOG("[Toolscreen] InstallRuntimeHook: glXSwapBuffers not found\n");
             return;
         }
         void* trampoline = nullptr;
         if (CreateHook(target, reinterpret_cast<void*>(hk_glXSwapBuffers), &trampoline) && trampoline) {
             g_realSwapBuffers.store(reinterpret_cast<SwapBuffersFunc>(trampoline));
-            fprintf(stderr, "[Toolscreen] glXSwapBuffers hooked at %p → trampoline %p\n", target, trampoline);
+            HOOK_LOG("[Toolscreen] glXSwapBuffers hooked at %p → trampoline %p\n", target, trampoline);
         } else {
-            fprintf(stderr, "[Toolscreen] InstallRuntimeHook: CreateHook failed\n");
+            HOOK_LOG("[Toolscreen] InstallRuntimeHook: CreateHook failed\n");
         }
     });
 }
