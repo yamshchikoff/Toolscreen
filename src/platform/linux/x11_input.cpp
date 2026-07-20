@@ -33,29 +33,15 @@ std::atomic<bool> g_cursorVisible{true};
 // Map X11 keycode to canonical VK, handling AltGr, CapsLock, NumLock, and
 // multiple keyboard groups (e.g., US+Russian layouts).
 uint32_t XKeycodeToVk(Display* dpy, unsigned int keycode, unsigned int state) {
-    // Determine the effective keyboard group and shift level from modifier state
-    // Mod5 (ISO_Level3_Shift) → group 1; Shift → level 1 within group
-    int group = (state & Mod5Mask) ? 1 : 0;
-    int level = (state & ShiftMask) ? 1 : 0;
-
-    // Include LockMask so CapsLock affects the keysym correctly
-    unsigned int mods = state & (ShiftMask | LockMask | Mod5Mask);
-
-    KeySym keysym = XkbKeycodeToKeysym(dpy, keycode, group, level);
+    // For key rebinding we need the PHYSICAL key identity regardless of
+    // active keyboard layout, Shift, CapsLock, or AltGr state.
+    // Always query group 0 level 0 — this gives the base (US-layout) keysym
+    // for the physical key. The state parameter is forwarded to X11KeyToVk
+    // for potential modifier-key disambiguation.
+    KeySym keysym = XkbKeycodeToKeysym(dpy, keycode, 0, 0);
     if (keysym == NoSymbol) {
-        keysym = XkbKeycodeToKeysym(dpy, keycode, 0, 0);
+        return 0;
     }
-
-    // Also try without LockMask if the result looks wrong for alpha keys
-    if ((keysym < XK_A || keysym > XK_Z) && (keysym < XK_a || keysym > XK_z)) {
-        KeySym keysymNoLock = XkbKeycodeToKeysym(dpy, keycode, group, level & ~1);
-        if (keysymNoLock != NoSymbol &&
-            ((keysymNoLock >= XK_A && keysymNoLock <= XK_Z) ||
-             (keysymNoLock >= XK_a && keysymNoLock <= XK_z))) {
-            keysym = keysymNoLock;
-        }
-    }
-
     return X11Display::X11KeyToVk(keysym, keycode, state);
 }
 
@@ -102,9 +88,12 @@ void PollEvents() {
     Display* dpy = X11Display::Get();
     if (!dpy || !g_installed.load()) return;
 
-    while (XPending(dpy)) {
-        XEvent ev;
-        XNextEvent(dpy, &ev);
+    // Use XCheckMaskEvent instead of XPending + XNextEvent to avoid a TOCTOU race:
+    // if another thread reads the event between our check and XNextEvent,
+    // XNextEvent blocks forever waiting for the next event.
+    // XCheckMaskEvent is non-blocking — returns False immediately if no match.
+    XEvent ev;
+    while (XCheckMaskEvent(dpy, ~0, &ev)) {
 
         InputEvent inputEv{};
         bool valid = false;
@@ -150,6 +139,11 @@ void PollEvents() {
             inputEv.type = EventType::FocusOut;
             inputEv.window = ev.xfocus.window;
             valid = true;
+            // Clear held-key state on focus loss to prevent "sticky" keys
+            {
+                std::lock_guard<std::mutex> lock(g_keyStateMutex);
+                g_keyState.clear();
+            }
             break;
         case ConfigureNotify:
             if (ev.xconfigure.width != 0 || ev.xconfigure.height != 0) {
@@ -247,32 +241,51 @@ void SendKeyUp(uint32_t vkCode) {
 void SendChar(uint32_t charCode) {
     if (charCode < 0x20 || charCode > 0x7E) return;
 
-    bool needsShift = false;
-    PlatformVk vk = charCode;
+    Display* dpy = X11Display::Get();
+    if (!dpy || !g_gameWindow) return;
 
-    // Uppercase letters: simulate Shift + base key
-    if (charCode >= 'A' && charCode <= 'Z') {
-        needsShift = true;
-        vk = charCode; // VK_A-VK_Z map to the base key
+    // Check XTEST availability
+    int xtestMajor, xtestMinor;
+    if (!XTestQueryExtension(dpy, &xtestMajor, &xtestMinor, nullptr, nullptr, nullptr)) {
+        fprintf(stderr, "[Toolscreen] XTEST unavailable — synthetic input disabled\n");
+        return;
     }
 
-    // Symbols that require Shift on US layout
-    static const std::unordered_set<char> shiftSymbols = {
-        '!', '@', '#', '$', '%', '^', '&', '*', '(', ')',
-        '_', '+', '{', '}', '|', ':', '"', '<', '>', '?', '~'
-    };
-    if (shiftSymbols.count(static_cast<char>(charCode))) {
-        needsShift = true;
+    // Convert character to KeySym
+    KeySym keysym = NoSymbol;
+    if (charCode >= 'a' && charCode <= 'z') {
+        keysym = XK_a + (charCode - 'a');
+    } else if (charCode >= 'A' && charCode <= 'Z') {
+        keysym = XK_A + (charCode - 'A');
+    } else if (charCode >= '0' && charCode <= '9') {
+        keysym = XK_0 + (charCode - '0');
+    } else {
+        // Symbols: use XStringToKeysym for layout-aware mapping
+        char buf[2] = {static_cast<char>(charCode), '\0'};
+        keysym = XStringToKeysym(buf);
     }
+
+    if (keysym == NoSymbol) return;
+
+    // Find the keycode that produces this keysym on the CURRENT layout
+    unsigned int keycode = XKeysymToKeycode(dpy, keysym);
+    if (keycode == 0) return;
+
+    // Determine if Shift is needed by comparing with the unshifted keysym
+    KeySym baseKeysym = XkbKeycodeToKeysym(dpy, keycode, 0, 0);
+    bool needsShift = (baseKeysym != keysym);
 
     if (needsShift) {
-        SendKeyDown(Vk::LSHIFT);
+        unsigned int shiftKeycode = XKeysymToKeycode(dpy, XK_Shift_L);
+        XTestFakeKeyEvent(dpy, shiftKeycode, True, CurrentTime);
     }
-    SendKeyDown(vk);
-    SendKeyUp(vk);
+    XTestFakeKeyEvent(dpy, keycode, True, CurrentTime);
+    XTestFakeKeyEvent(dpy, keycode, False, CurrentTime);
     if (needsShift) {
-        SendKeyUp(Vk::LSHIFT);
+        unsigned int shiftKeycode = XKeysymToKeycode(dpy, XK_Shift_L);
+        XTestFakeKeyEvent(dpy, shiftKeycode, False, CurrentTime);
     }
+    X11Display::Flush();
 }
 
 void GetCursorPos(int& outX, int& outY) {

@@ -66,14 +66,15 @@ bool IsWindowInForeground(Window win) {
     if (focused == win) return true;
 
     // Walk up the window tree
-    Window root, parent, *children;
-    unsigned int nchildren;
+    Window root, parent, *children = nullptr;
+    unsigned int nchildren = 0;
     Window current = focused;
     for (int i = 0; i < 20; ++i) { // Max depth
         if (current == win) return true;
         if (current == 0) break;
-        XQueryTree(dpy, current, &root, &parent, &children, &nchildren);
-        if (children) XFree(children);
+        if (!XQueryTree(dpy, current, &root, &parent, &children, &nchildren) || !children) break;
+        XFree(children);
+        children = nullptr;
         current = parent;
     }
     return false;

@@ -10,17 +10,17 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
-#include <sys/time.h>
+#include <atomic>
 
 namespace {
 
 Display* g_display = nullptr;
 Window g_window = 0;
-struct timeval g_startTime;
+struct timespec g_startTime;
 
 // Mouse state (tracked from events, not polled from X11)
 int g_mouseX = 0, g_mouseY = 0;
-bool g_mouseButtons[5] = {};
+std::atomic<bool> g_mouseButtons[5] = {};
 float g_mouseWheel = 0.0f;
 
 // Modifier state tracked from X11 key events (not LED indicators)
@@ -141,10 +141,10 @@ ImGuiKey X11KeySymToImGuiKey(KeySym keysym) {
 }
 
 double GetTimeSinceStart() {
-    struct timeval now;
-    gettimeofday(&now, nullptr);
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
     return (now.tv_sec - g_startTime.tv_sec) +
-           (now.tv_usec - g_startTime.tv_usec) / 1000000.0;
+           (now.tv_nsec - g_startTime.tv_nsec) / 1000000000.0;
 }
 
 } // namespace
@@ -152,7 +152,7 @@ double GetTimeSinceStart() {
 bool ImGui_ImplX11_Init(Display* display, Window window) {
     g_display = display;
     g_window = window;
-    gettimeofday(&g_startTime, nullptr);
+    clock_gettime(CLOCK_MONOTONIC, &g_startTime);
 
     ImGuiIO& io = ImGui::GetIO();
     io.BackendPlatformName = "imgui_impl_x11";

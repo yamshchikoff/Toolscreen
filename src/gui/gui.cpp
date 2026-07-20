@@ -56,8 +56,12 @@
 #include <windowsx.h>
 #endif
 
+#ifdef _WIN32
 #pragma comment(lib, "Shlwapi.lib")
+#endif
+#ifdef _WIN32
 #pragma comment(lib, "Winhttp.lib")
+#endif
 
 static constexpr const wchar_t* DISCORD_URL = L"https://discord.gg/A2v6bCJg6K";
 

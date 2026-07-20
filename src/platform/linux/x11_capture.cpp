@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstring>
 #include <algorithm>
+#include <atomic>
 #include <mutex>
 
 namespace X11Capture {
@@ -33,6 +34,59 @@ bool InitShm() {
     return false;
 }
 
+// Fast XImage → RGBA8 conversion without XGetPixel.
+// Works directly with image->data, handling 24/32 bpp (BGRX/BGRA) and 16 bpp.
+void CopyXImageToRGBA(const XImage* image, int w, int h,
+                      std::vector<uint8_t>& outRgba) {
+    const int bpp = image->bits_per_pixel;
+    const int bytesPerPixel = bpp / 8;
+    const uint8_t* src = reinterpret_cast<const uint8_t*>(image->data);
+
+    if (bpp >= 24) {
+        // 24 or 32 bpp: direct BGR/BGRA → RGBA copy
+        for (int row = 0; row < h; ++row) {
+            for (int col = 0; col < w; ++col) {
+                size_t srcIdx = static_cast<size_t>(row) * image->bytes_per_line
+                              + static_cast<size_t>(col) * bytesPerPixel;
+                size_t dstIdx = (static_cast<size_t>(row) * w + col) * 4;
+                outRgba[dstIdx + 0] = src[srcIdx + 2]; // R (from BGR)
+                outRgba[dstIdx + 1] = src[srcIdx + 1]; // G
+                outRgba[dstIdx + 2] = src[srcIdx + 0]; // B
+                outRgba[dstIdx + 3] = 255;             // A
+            }
+        }
+    } else if (bpp >= 15) {
+        // 16 or 15 bpp: unpack using image masks
+        const unsigned long rm = image->red_mask;
+        const unsigned long gm = image->green_mask;
+        const unsigned long bm = image->blue_mask;
+
+        // Precompute shifts (count trailing zeros)
+        const int rshift = __builtin_ctzl(rm);
+        const int gshift = __builtin_ctzl(gm);
+        const int bshift = __builtin_ctzl(bm);
+
+        for (int row = 0; row < h; ++row) {
+            for (int col = 0; col < w; ++col) {
+                size_t srcIdx = static_cast<size_t>(row) * image->bytes_per_line
+                              + static_cast<size_t>(col) * bytesPerPixel;
+                size_t dstIdx = (static_cast<size_t>(row) * w + col) * 4;
+
+                uint16_t pixel;
+                memcpy(&pixel, src + srcIdx, sizeof(pixel));
+
+                outRgba[dstIdx + 0] = static_cast<uint8_t>((pixel & rm) >> rshift);
+                outRgba[dstIdx + 1] = static_cast<uint8_t>((pixel & gm) >> gshift);
+                outRgba[dstIdx + 2] = static_cast<uint8_t>((pixel & bm) >> bshift);
+                outRgba[dstIdx + 3] = 255;
+            }
+        }
+    } else {
+        // 8 bpp or lower: rare, skip (fill black)
+        memset(outRgba.data(), 0, outRgba.size());
+    }
+}
+
 } // namespace
 
 bool CaptureScreen(int x, int y, int w, int h,
@@ -41,12 +95,9 @@ bool CaptureScreen(int x, int y, int w, int h,
     Display* dpy = X11Display::Get();
     if (!dpy) return false;
 
-    // Ensure SHM is initialized
-    static bool shmTried = false;
-    if (!shmTried) {
-        shmTried = true;
-        InitShm();
-    }
+    // Thread-safe one-shot SHM init (fixes race on shmTried)
+    static std::once_flag shmInitFlag;
+    std::call_once(shmInitFlag, InitShm);
 
     Window root = X11Display::GetRoot();
     if (!root) return false;
@@ -61,7 +112,7 @@ bool CaptureScreen(int x, int y, int w, int h,
 
     outWidth = w;
     outHeight = h;
-    outRgba.resize(w * h * 4);
+    outRgba.resize(static_cast<size_t>(w) * h * 4);
 
     if (g_shmAvailable) {
         // XShm path — fast shared memory transfer
@@ -71,7 +122,7 @@ bool CaptureScreen(int x, int y, int w, int h,
                                          ZPixmap, nullptr, &shmInfo, w, h);
         if (!image) goto fallback;
 
-        shmInfo.shmid = shmget(IPC_PRIVATE, image->bytes_per_line * image->height,
+        shmInfo.shmid = shmget(IPC_PRIVATE, static_cast<size_t>(image->bytes_per_line) * image->height,
                               IPC_CREAT | 0666);
         if (shmInfo.shmid == -1) {
             XDestroyImage(image);
@@ -91,29 +142,7 @@ bool CaptureScreen(int x, int y, int w, int h,
 
         XShmGetImage(dpy, root, image, x, y, AllPlanes);
 
-        // Convert to RGBA8 (X11 image is typically BGRX or BGRA depending on depth)
-        int depth = DefaultDepth(dpy, X11Display::GetScreen());
-        uint8_t* src = reinterpret_cast<uint8_t*>(image->data);
-        for (int row = 0; row < h; ++row) {
-            for (int col = 0; col < w; ++col) {
-                size_t srcIdx = row * image->bytes_per_line + col * (image->bits_per_pixel / 8);
-                size_t dstIdx = (row * w + col) * 4;
-
-                if (depth >= 24) {
-                    outRgba[dstIdx + 0] = src[srcIdx + 2]; // R (from BGR)
-                    outRgba[dstIdx + 1] = src[srcIdx + 1]; // G
-                    outRgba[dstIdx + 2] = src[srcIdx + 0]; // B
-                    outRgba[dstIdx + 3] = 255;             // A
-                } else {
-                    // 16-bit or lower — use XGetPixel
-                    unsigned long pixel = XGetPixel(image, col, row);
-                    outRgba[dstIdx + 0] = (pixel >> 16) & 0xFF;
-                    outRgba[dstIdx + 1] = (pixel >> 8) & 0xFF;
-                    outRgba[dstIdx + 2] = pixel & 0xFF;
-                    outRgba[dstIdx + 3] = 255;
-                }
-            }
-        }
+        CopyXImageToRGBA(image, w, h, outRgba);
 
         XShmDetach(dpy, &shmInfo);
         XDestroyImage(image);
@@ -126,16 +155,7 @@ fallback:
     XImage* image = XGetImage(dpy, root, x, y, w, h, AllPlanes, ZPixmap);
     if (!image) return false;
 
-    for (int row = 0; row < h; ++row) {
-        for (int col = 0; col < w; ++col) {
-            size_t dstIdx = (row * w + col) * 4;
-            unsigned long pixel = XGetPixel(image, col, row);
-            outRgba[dstIdx + 0] = (pixel >> 16) & 0xFF;
-            outRgba[dstIdx + 1] = (pixel >> 8) & 0xFF;
-            outRgba[dstIdx + 2] = pixel & 0xFF;
-            outRgba[dstIdx + 3] = 255;
-        }
-    }
+    CopyXImageToRGBA(image, w, h, outRgba);
 
     XDestroyImage(image);
     return true;
@@ -157,18 +177,9 @@ bool CaptureWindow(Window win, int& outWidth, int& outHeight,
     XImage* image = XGetImage(dpy, win, 0, 0, outWidth, outHeight, AllPlanes, ZPixmap);
     if (!image) return false;
 
-    outRgba.resize(outWidth * outHeight * 4);
+    outRgba.resize(static_cast<size_t>(outWidth) * outHeight * 4);
 
-    for (int row = 0; row < outHeight; ++row) {
-        for (int col = 0; col < outWidth; ++col) {
-            size_t dstIdx = (row * outWidth + col) * 4;
-            unsigned long pixel = XGetPixel(image, col, row);
-            outRgba[dstIdx + 0] = (pixel >> 16) & 0xFF;
-            outRgba[dstIdx + 1] = (pixel >> 8) & 0xFF;
-            outRgba[dstIdx + 2] = pixel & 0xFF;
-            outRgba[dstIdx + 3] = 255;
-        }
-    }
+    CopyXImageToRGBA(image, outWidth, outHeight, outRgba);
 
     XDestroyImage(image);
     return true;

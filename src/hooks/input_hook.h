@@ -6,8 +6,10 @@
 #endif
 #include <string>
 
+#ifdef _WIN32
 extern WNDPROC g_originalWndProc;
 extern std::atomic<HWND> g_subclassedHwnd;
+#endif
 
 struct InputHandlerResult {
     bool consumed;

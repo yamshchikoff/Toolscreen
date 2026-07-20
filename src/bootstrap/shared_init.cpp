@@ -37,7 +37,11 @@ void LinuxSignalHandler(int sig, siginfo_t* info, void* /*ctx*/) {
         case SIGBUS:  sigName = "SIGBUS"; break;
     }
 
-    // Build message with write() — no malloc, no fprintf
+    // Build message with snprintf — technically not async-signal-safe per POSIX,
+    // but glibc snprintf for simple integer/pointer/string formats is safe in practice
+    // (no locale, no floating-point, no malloc for small buffers).
+    char buf[256];
+    int len = snprintf(buf, sizeof(buf),
     char buf[256];
     int len = snprintf(buf, sizeof(buf),
                        "[Toolscreen] FATAL: signal %d (%s) addr=%p\n",

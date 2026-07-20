@@ -34,6 +34,9 @@ void SetCustomCursor(Window win, void* cursorHandle);
 // Free a custom cursor
 void FreeCustomCursor(void* cursorHandle);
 
+// Release cached resources (invisible cursor, etc.)
+void Shutdown();
+
 } // namespace X11Cursor
 
 #endif // PLATFORM_LINUX

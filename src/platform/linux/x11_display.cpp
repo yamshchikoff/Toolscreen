@@ -7,6 +7,7 @@
 #include <X11/Xresource.h>
 #include <X11/keysym.h>
 #include <GL/glx.h>
+#include <X11/extensions/Xrandr.h>
 #include <cstdio>
 #include <cstring>
 #include <mutex>
@@ -31,6 +32,9 @@ std::atomic<uint64_t> g_renderThreadId{0};
 // Previous X11 error handler for chaining
 int (*g_oldErrorHandler)(Display*, XErrorEvent*) = nullptr;
 int (*g_oldIOErrorHandler)(Display*) = nullptr;
+int g_xrandrEventBase = 0;
+int g_xrandrErrorBase = 0;
+bool g_xrandrAvailable = false;
 
 // Custom error handler (non-fatal errors — log and continue)
 int X11ErrorHandler(Display* dpy, XErrorEvent* ev) {
@@ -41,13 +45,14 @@ int X11ErrorHandler(Display* dpy, XErrorEvent* ev) {
     return 0;
 }
 
-// Custom I/O error handler (connection lost — log and return instead of exit())
-// Default Xlib I/O handler calls exit(1), killing the host process.
-int X11IOErrorHandler(Display* dpy) {
-    fprintf(stderr, "[Toolscreen] X11 I/O error: connection to X server lost\n");
-    // Don't call exit() — let the application handle the disconnection
-    return 0;
-}
+    // Custom I/O error handler (connection lost — must NOT return per X11 spec)
+    // Default Xlib I/O handler calls exit(1), killing the host process.
+    // Per the X11 specification, an I/O error handler MUST NOT return —
+    // doing so is undefined behavior and can crash the host application.
+    int X11IOErrorHandler(Display* dpy) {
+        fprintf(stderr, "[Toolscreen] X11 I/O error: connection to X server lost\n");
+        _exit(1); // Required by X11 spec: I/O error handlers must not return
+    }
 
 // Map X11 KeySym to canonical Windows VK
 const std::unordered_map<KeySym, PlatformVk>& GetKeysymToVkMap() {
@@ -181,6 +186,9 @@ bool Open() {
     g_oldErrorHandler = XSetErrorHandler(X11ErrorHandler);
     g_oldIOErrorHandler = XSetIOErrorHandler(X11IOErrorHandler);
 
+    // Query XRandR for multi-monitor geometry support
+    g_xrandrAvailable = XRRQueryExtension(g_display, &g_xrandrEventBase, &g_xrandrErrorBase);
+
     g_initialized.store(true);
     return true;
 }
@@ -312,12 +320,42 @@ void Flush() {
 
 int GetMonitorCount() {
     if (!g_display) return 1;
+
+    if (g_xrandrAvailable) {
+        XRRScreenResources* res = XRRGetScreenResources(g_display, g_root);
+        if (res) {
+            int count = res->ncrtc;
+            XRRFreeScreenResources(res);
+            return count > 0 ? count : 1;
+        }
+    }
     return ScreenCount(g_display);
 }
 
 bool GetMonitorGeometry(int index, PlatformRect& outRect, bool& outIsPrimary) {
     if (!g_display) return false;
 
+    if (g_xrandrAvailable) {
+        XRRScreenResources* res = XRRGetScreenResources(g_display, g_root);
+        if (res) {
+            if (index >= 0 && index < res->ncrtc) {
+                XRRCrtcInfo* crtc = XRRGetCrtcInfo(g_display, res, res->crtcs[index]);
+                if (crtc) {
+                    outRect.left   = static_cast<s32>(crtc->x);
+                    outRect.top    = static_cast<s32>(crtc->y);
+                    outRect.right  = static_cast<s32>(crtc->x + crtc->width);
+                    outRect.bottom = static_cast<s32>(crtc->y + crtc->height);
+                    outIsPrimary = (index == 0);
+                    XRRFreeCrtcInfo(crtc);
+                    XRRFreeScreenResources(res);
+                    return true;
+                }
+            }
+            XRRFreeScreenResources(res);
+        }
+    }
+
+    // Fallback: X11 Screen (all monitors in one desktop)
     int screenCount = ScreenCount(g_display);
     if (index < 0 || index >= screenCount) return false;
 
@@ -330,6 +368,7 @@ bool GetMonitorGeometry(int index, PlatformRect& outRect, bool& outIsPrimary) {
     outRect.bottom = HeightOfScreen(screen);
     outIsPrimary = (index == 0);
     return true;
+}
 }
 
 uint32_t X11KeyToVk(KeySym keysym, unsigned int /*keycode*/, unsigned int /*state*/) {

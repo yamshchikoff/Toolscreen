@@ -22,29 +22,38 @@
 namespace GLXHook {
 
 // ---- Original function pointers ----
+// glXSwapBuffers: resolved via dlsym(RTLD_NEXT) inside the interposed function itself.
+// Other GL functions: also resolved via dlsym(RTLD_NEXT) in their respective
+// LD_PRELOAD interpositions below. We keep raw pointers (not atomic) because
+// std::call_once guarantees they are fully written before any reader can observe them.
 std::atomic<SwapBuffersFunc> g_realSwapBuffers{nullptr};
 ViewportFunc g_realViewport = nullptr;
 BindTextureFunc g_realBindTexture = nullptr;
 BindFramebufferFunc g_realBindFramebuffer = nullptr;
 BlitFramebufferFunc g_realBlitFramebuffer = nullptr;
 
-// ---- GLXSwapBuffers interposition via LD_PRELOAD ----
-// On Linux, we use LD_PRELOAD symbol interposition for glXSwapBuffers.
-// Our .so exports glXSwapBuffers, and the dynamic linker resolves to our copy first.
-// We call the real one via dlsym(RTLD_NEXT, ...).
-// For other GL functions (resolved via glXGetProcAddress or GLEW), we use inline hooking.
+// ---- Symbol interposition via LD_PRELOAD ----
+// On Linux, we intercept GL / GLX functions by exporting our own copies from the .so.
+// The dynamic linker resolves to our copy first when LD_PRELOAD is used.
+// Each interposed function resolves the real implementation via dlsym(RTLD_NEXT, ...)
+// on its FIRST call (thread-safe via std::call_once), then chains to it.
+//
+// This pattern is used for ALL hooked GL functions — not just glXSwapBuffers.
+// It avoids the torn-read race that an inline-hook engine (mprotect + memcpy)
+// would cause when patching code that other threads are concurrently executing.
 
 namespace {
 
-// ---- Inline hook engine ----
+// ---- Inline hook engine (kept for potential future non-GL use) ----
 // Replaces the core MinHook functionality using mprotect + trampolines.
 // x86-64 only: installs a 14-byte absolute jump: mov rax, imm64; jmp rax
 
 struct HookEntry {
     void* target;
     void* detour;
-    void* trampoline; // Callable original function
-    size_t originalSize;
+    void* trampoline;           // Callable original function
+    uint8_t backup[14];         // Original bytes (restored on DisableHook)
+    size_t trampolineSize;      // For munmap in Shutdown
     bool enabled;
 };
 
@@ -71,10 +80,12 @@ size_t PageSpan(void* addr, size_t size) {
     return end - start;
 }
 
-// Install the absolute jump at `target` to redirect to `destination`
-void InstallJump(void* target, void* destination, uint8_t* backup, size_t backupSize) {
+// Write an absolute 64-bit jump at `target` redirecting to `destination`.
+// Backs up original bytes into `backup`.
+// Returns the page span that was made writable (caller should restore protection).
+void InstallJump(void* target, void* destination, uint8_t* backup) {
     // Back up original bytes
-    memcpy(backup, target, backupSize);
+    memcpy(backup, target, kJumpSize);
 
     // Make page writable
     size_t span = PageSpan(target, kJumpSize);
@@ -98,10 +109,21 @@ void InstallJump(void* target, void* destination, uint8_t* backup, size_t backup
     mprotect(PageAlign(target), span, PROT_READ | PROT_EXEC);
 }
 
-// Create a trampoline that executes the backed-up bytes then jumps to (target + backupSize)
-void* CreateTrampoline(void* target, const uint8_t* backup, size_t backupSize) {
+// Write the original bytes back to `target` (reverse of InstallJump).
+void RestoreJump(void* target, const uint8_t* backup) {
+    size_t span = PageSpan(target, kJumpSize);
+    if (mprotect(PageAlign(target), span, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
+        fprintf(stderr, "[Toolscreen] mprotect RWX (restore) failed for %p: %s\n", target, strerror(errno));
+        return;
+    }
+    memcpy(target, backup, kJumpSize);
+    mprotect(PageAlign(target), span, PROT_READ | PROT_EXEC);
+}
+
+// Create a trampoline that executes the backed-up bytes then jumps to (target + kJumpSize)
+void* CreateTrampoline(void* target, const uint8_t* backup) {
     // Allocate executable memory for trampoline
-    size_t trampSize = backupSize + kJumpSize;
+    size_t trampSize = kJumpSize + kJumpSize; // backup bytes + another jump
     void* tramp = mmap(nullptr, trampSize, PROT_READ | PROT_WRITE | PROT_EXEC,
                        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (tramp == MAP_FAILED) {
@@ -110,11 +132,11 @@ void* CreateTrampoline(void* target, const uint8_t* backup, size_t backupSize) {
     }
 
     // Copy original bytes
-    memcpy(tramp, backup, backupSize);
+    memcpy(tramp, backup, kJumpSize);
 
     // Append jump to original function (after the backup bytes)
-    uint8_t* code = static_cast<uint8_t*>(tramp) + backupSize;
-    uintptr_t nextAddr = reinterpret_cast<uintptr_t>(target) + backupSize;
+    uint8_t* code = static_cast<uint8_t*>(tramp) + kJumpSize;
+    uintptr_t nextAddr = reinterpret_cast<uintptr_t>(target) + kJumpSize;
     code[0] = 0x48;
     code[1] = 0xB8;
     memcpy(&code[2], &nextAddr, sizeof(void*));
@@ -140,25 +162,20 @@ bool CreateHook(void* target, void* detour, void** original) {
     }
 
     HookEntry entry;
+    memset(&entry, 0, sizeof(entry));
     entry.target = target;
     entry.detour = detour;
-    entry.originalSize = kJumpSize;
+    entry.trampolineSize = kJumpSize + kJumpSize; // backup + jump
     entry.enabled = false;
 
-    // Store backup bytes for this specific hook (BUGFIX: was static, now local)
-    uint8_t backup[kJumpSize] = {};
-
     // Install the jump from target to detour
-    InstallJump(target, detour, backup, kJumpSize);
+    InstallJump(target, detour, entry.backup);
 
     // Create trampoline
-    entry.trampoline = CreateTrampoline(target, backup, kJumpSize);
+    entry.trampoline = CreateTrampoline(target, entry.backup);
     if (!entry.trampoline) {
         // Restore original bytes on failure
-        size_t span = PageSpan(target, kJumpSize);
-        mprotect(PageAlign(target), span, PROT_READ | PROT_WRITE | PROT_EXEC);
-        memcpy(target, backup, kJumpSize);
-        mprotect(PageAlign(target), span, PROT_READ | PROT_EXEC);
+        RestoreJump(target, entry.backup);
         return false;
     }
 
@@ -171,6 +188,8 @@ bool EnableHook(void* hook) {
     std::lock_guard<std::mutex> lock(g_hookMutex);
     auto it = g_hooks.find(hook);
     if (it == g_hooks.end()) return false;
+    if (it->second.enabled) return true; // Already enabled
+    InstallJump(it->second.target, it->second.detour, it->second.backup);
     it->second.enabled = true;
     return true;
 }
@@ -179,6 +198,8 @@ bool DisableHook(void* hook) {
     std::lock_guard<std::mutex> lock(g_hookMutex);
     auto it = g_hooks.find(hook);
     if (it == g_hooks.end()) return false;
+    if (!it->second.enabled) return true; // Already disabled
+    RestoreJump(it->second.target, it->second.backup);
     it->second.enabled = false;
     return true;
 }
@@ -198,20 +219,33 @@ void* GetGLFunc(const char* name) {
     return func;
 }
 
-// ---- GLX SwapBuffers interposition ----
-// This function OVERRIDES the system glXSwapBuffers via LD_PRELOAD symbol interposition.
-// The dynamic linker calls our version instead of the one in libGL.
-// We use dlsym(RTLD_NEXT, ...) to find and call the real implementation.
+// ---- Macro: generate LD_PRELOAD interposition for a GL function ----
+// Each hooked GL function is exported from our .so with the same name as the
+// real one. The dynamic linker resolves to our copy first (thanks to LD_PRELOAD).
+// On first call we resolve the real function via dlsym(RTLD_NEXT) using
+// std::call_once for thread safety. Subsequent calls chain directly.
+//
+// Usage: GL_HOOK(return_type, FunctionName, (params...), (args...), hook_fn, real_ptr)
+#define GL_HOOK(RET, NAME, PARAMS, ARGS, HOOK_FN, REAL_PTR)                   \
+    extern "C" RET NAME PARAMS {                                               \
+        static std::once_flag s_once;                                          \
+        std::call_once(s_once, []() {                                          \
+            REAL_PTR = reinterpret_cast<decltype(REAL_PTR)>(                   \
+                dlsym(RTLD_NEXT, #NAME));                                      \
+        });                                                                    \
+        HOOK_FN ARGS;                                                          \
+    }
+
+// ---- glXSwapBuffers interposition ----
+// Uses a thread_local guard against re-entrancy (our own rendering may
+// trigger another swap). Resolution via std::call_once for thread safety.
 
 extern "C" {
 
-// Declare our own glXSwapBuffers that overrides the system one
 void glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     // Re-entrancy guard
     static thread_local int swapDepth = 0;
     if (swapDepth > 0) {
-        // If we're already inside our swap handler and something calls swap again,
-        // go directly to the real implementation
         if (g_realSwapBuffers.load()) {
             g_realSwapBuffers.load()(dpy, drawable);
         }
@@ -219,21 +253,22 @@ void glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     }
     ++swapDepth;
 
-    // Resolve the real glXSwapBuffers on first call
-    if (!g_realSwapBuffers.load()) {
+    // Resolve the real glXSwapBuffers on first call (thread-safe)
+    static std::once_flag swapOnceFlag;
+    std::call_once(swapOnceFlag, []() {
         g_realSwapBuffers.store(reinterpret_cast<SwapBuffersFunc>(
             dlsym(RTLD_NEXT, "glXSwapBuffers")));
         if (!g_realSwapBuffers.load()) {
             fprintf(stderr, "[Toolscreen] FATAL: Cannot find real glXSwapBuffers\n");
-            --swapDepth;
-            return;
         }
+    });
+
+    if (!g_realSwapBuffers.load()) {
+        --swapDepth;
+        return;
     }
 
-    // IMPORTANT: Render overlays BEFORE the real swap so they appear
-    // on the current frame (matching Windows SwapBuffers hook behavior).
-    // On Windows: RenderMode() → next(hDc) [real swap]
-    // On Linux:  RenderMode() → real_glXSwapBuffers
+    // Render overlays BEFORE the real swap so they appear on the current frame
     hk_glXSwapBuffers(dpy, drawable);
 
     // Call the real glXSwapBuffers (game frame is presented with our overlays)
@@ -242,44 +277,59 @@ void glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     --swapDepth;
 }
 
+// ---- Interposed GL functions (LD_PRELOAD, no inline hooks) ----
+// Each overrides the system GL function. The real implementation is resolved
+// via dlsym(RTLD_NEXT) on first call (std::call_once). This avoids the
+// torn-read race that inline-hooking would cause during concurrent rendering.
+
+void glViewport(GLint x, GLint y, GLsizei width, GLsizei height) {
+    static std::once_flag s_once;
+    std::call_once(s_once, []() {
+        g_realViewport = reinterpret_cast<ViewportFunc>(dlsym(RTLD_NEXT, "glViewport"));
+    });
+    hk_glViewport(x, y, width, height);
+}
+
+void glBindTexture(GLenum target, GLuint texture) {
+    static std::once_flag s_once;
+    std::call_once(s_once, []() {
+        g_realBindTexture = reinterpret_cast<BindTextureFunc>(dlsym(RTLD_NEXT, "glBindTexture"));
+    });
+    hk_glBindTexture(target, texture);
+}
+
+void glBindFramebuffer(GLenum target, GLuint framebuffer) {
+    static std::once_flag s_once;
+    std::call_once(s_once, []() {
+        g_realBindFramebuffer = reinterpret_cast<BindFramebufferFunc>(dlsym(RTLD_NEXT, "glBindFramebuffer"));
+    });
+    hk_glBindFramebuffer(target, framebuffer);
+}
+
+void glBlitFramebuffer(GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1,
+                       GLint dstX0, GLint dstY0, GLint dstX1, GLint dstY1,
+                       GLbitfield mask, GLenum filter) {
+    static std::once_flag s_once;
+    std::call_once(s_once, []() {
+        g_realBlitFramebuffer = reinterpret_cast<BlitFramebufferFunc>(dlsym(RTLD_NEXT, "glBlitFramebuffer"));
+    });
+    hk_glBlitFramebuffer(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
+}
+
 } // extern "C"
 
-// ---- Hooked function implementations ----
+// ---- Hooked function implementations (called from interposed stubs) ----
 
 void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     PROFILE_SCOPE("glXSwapBuffers");
 
-    // Lazy GLEW initialization on first call
+    // Lazy GLEW initialization on first call (requires an active GL context,
+    // so we must do it here — not in Initialize())
     if (!g_glewReady.load(std::memory_order_acquire)) {
         GLenum glewErr = glewInit();
         if (glewErr == GLEW_OK) {
             g_glewReady.store(true, std::memory_order_release);
             fprintf(stderr, "[Toolscreen] GLEW initialized OK\n");
-
-            // Install additional GL hooks now that GLEW is ready
-            void* viewportFunc = GetGLFunc("glViewport");
-            if (viewportFunc) {
-                CreateHook(viewportFunc, reinterpret_cast<void*>(hk_glViewport),
-                          reinterpret_cast<void**>(&g_realViewport));
-            }
-
-            void* bindTexFunc = GetGLFunc("glBindTexture");
-            if (bindTexFunc) {
-                CreateHook(bindTexFunc, reinterpret_cast<void*>(hk_glBindTexture),
-                          reinterpret_cast<void**>(&g_realBindTexture));
-            }
-
-            void* bindFbFunc = GetGLFunc("glBindFramebuffer");
-            if (bindFbFunc) {
-                CreateHook(bindFbFunc, reinterpret_cast<void*>(hk_glBindFramebuffer),
-                          reinterpret_cast<void**>(&g_realBindFramebuffer));
-            }
-
-            void* blitFbFunc = GetGLFunc("glBlitFramebuffer");
-            if (blitFbFunc) {
-                CreateHook(blitFbFunc, reinterpret_cast<void*>(hk_glBlitFramebuffer),
-                          reinterpret_cast<void**>(&g_realBlitFramebuffer));
-            }
         } else {
             fprintf(stderr, "[Toolscreen] GLEW init failed: %s\n",
                     reinterpret_cast<const char*>(glewGetErrorString(glewErr)));
@@ -288,21 +338,14 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
 
     // Detect game window from current GLX drawable
     if (X11Display::GetGameWindow() == 0) {
-        Window win = 0;
-        // glXGetCurrentDrawable returns the current GLXDrawable
-        // For on-screen rendering, this is a Window (X11 Window ID)
         GLXDrawable currentDrawable = glXGetCurrentDrawable();
         if (currentDrawable) {
-            win = static_cast<Window>(currentDrawable);
+            Window win = static_cast<Window>(currentDrawable);
             X11Display::SetGameWindow(win);
-
-            // Note: XSelectInput is handled by X11Input::Install()
-            // to avoid overwriting the game's existing event mask.
         }
     }
 
     // TODO: Full render pipeline — RenderMode(), GUI, etc.
-    // This will be connected in later phases when we integrate the ported subsystems.
 }
 
 void hk_glViewport(GLint x, GLint y, GLsizei width, GLsizei height) {
@@ -314,8 +357,6 @@ void hk_glViewport(GLint x, GLint y, GLsizei width, GLsizei height) {
     }
 
     // TODO: Mode viewport override logic from dllmain.cpp
-    // This modifies the viewport for the mode system (fullscreen, thin, wide, etc.)
-    // and EyeZoom magnification.
 
     if (g_realViewport) {
         g_realViewport(x, y, width, height);
@@ -324,7 +365,6 @@ void hk_glViewport(GLint x, GLint y, GLsizei width, GLsizei height) {
 
 void hk_glBindTexture(GLenum target, GLuint texture) {
     // TODO: Track game's framebuffer textures for mirror capture
-    // Same logic as dllmain.cpp glBindTexture hook
     if (g_realBindTexture) {
         g_realBindTexture(target, texture);
     }
@@ -341,7 +381,6 @@ void hk_glBlitFramebuffer(GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1,
                           GLint dstX0, GLint dstY0, GLint dstX1, GLint dstY1,
                           GLbitfield mask, GLenum filter) {
     // TODO: OBS redirect (if enabled)
-    // Same logic as dllmain.cpp / obs_thread.cpp
     if (g_realBlitFramebuffer) {
         g_realBlitFramebuffer(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
     }
@@ -362,19 +401,32 @@ bool Initialize() {
 
     fprintf(stderr, "[Toolscreen] GLXHook initializing...\n");
 
-    // We don't need to hook glXSwapBuffers — it's intercepted via LD_PRELOAD
-    // (our .so exports glXSwapBuffers, we call the real one via dlsym(RTLD_NEXT))
+    // All GL/GLX functions are intercepted via LD_PRELOAD symbol interposition.
+    // The dynamic linker resolves to our exported copies first.
+    // Each interposed function resolves the real implementation via
+    // dlsym(RTLD_NEXT) + std::call_once on first call.
+    //
+    // No inline hooks are installed for GL functions — this avoids the
+    // torn-read race that would occur if we patched code while the game
+    // is already rendering on another thread.
 
-    // For other GL functions, we'll install hooks after GLEW init
     g_initialized.store(true);
     return true;
 }
 
 void Shutdown() {
-    // Restore all inline hooks
+    // Free trampoline allocations
     std::lock_guard<std::mutex> lock(g_hookMutex);
-    // Note: Inline hooks are not easily restorable without backing up original bytes.
-    // For now, we just let the process exit (hooks die with the process).
+    for (auto& pair : g_hooks) {
+        if (pair.second.trampoline) {
+            munmap(pair.second.trampoline, pair.second.trampolineSize);
+        }
+        // Restore original bytes if hook is still enabled
+        if (pair.second.enabled) {
+            RestoreJump(pair.second.target, pair.second.backup);
+        }
+    }
+    g_hooks.clear();
     g_hooksEnabled.store(false);
 }
 

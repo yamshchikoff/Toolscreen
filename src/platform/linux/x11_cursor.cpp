@@ -15,6 +15,10 @@ namespace {
 
 std::atomic<bool> g_cursorVisible{true};
 
+// Lazily-created invisible cursor for cursor hiding
+Cursor g_invisibleCursor = 0;
+std::mutex g_invisibleCursorMutex;
+
 } // namespace
 
 void ShowCursor(bool show) {
@@ -28,21 +32,27 @@ void ShowCursor(bool show) {
         XUndefineCursor(dpy, win);
     } else {
         // Create invisible cursor on first use (mutex-protected against races)
-        static Cursor invisibleCursor = 0;
-        static std::mutex cursorMutex;
-        std::lock_guard<std::mutex> lock(cursorMutex);
-        if (!invisibleCursor) {
+        std::lock_guard<std::mutex> lock(g_invisibleCursorMutex);
+        if (!g_invisibleCursor) {
             XColor dummy;
             memset(&dummy, 0, sizeof(dummy));
             Pixmap blank = XCreatePixmap(dpy, win, 1, 1, 1);
-            invisibleCursor = XCreatePixmapCursor(dpy, blank, blank, &dummy, &dummy, 0, 0);
+            g_invisibleCursor = XCreatePixmapCursor(dpy, blank, blank, &dummy, &dummy, 0, 0);
             XFreePixmap(dpy, blank);
         }
-        XDefineCursor(dpy, win, invisibleCursor);
+        XDefineCursor(dpy, win, g_invisibleCursor);
     }
 
     g_cursorVisible.store(show);
     X11Display::Flush();
+}
+
+void Shutdown() {
+    Display* dpy = X11Display::Get();
+    if (dpy && g_invisibleCursor) {
+        XFreeCursor(dpy, g_invisibleCursor);
+        g_invisibleCursor = 0;
+    }
 }
 
 bool IsCursorVisible() {

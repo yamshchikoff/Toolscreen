@@ -9,6 +9,7 @@
 #include "platform/linux/x11_display.h"
 #include "platform/linux/glx_hook.h"
 #include "platform/linux/x11_input.h"
+#include "platform/linux/x11_cursor.h"
 #include "common/profiler.h"
 #include "bootstrap/shared_init.h"
 
@@ -138,6 +139,7 @@ void ToolscreenLinuxShutdown() {
 
     StopThreads();
     GLXHook::Shutdown();
+    X11Cursor::Shutdown();
     X11Display::Close();
 
     fprintf(stderr, "[Toolscreen] Shutdown complete\n");
@@ -250,7 +252,7 @@ std::string VkToString(PlatformVk vk) {
     }
     // Fallback: return hex code
     char buf[16];
-    snprintf(buf, sizeof(buf), "0x%02X", vk);
+    snprintf(buf, sizeof(buf), "0x%04X", vk);
     return std::string(buf);
 }
 
