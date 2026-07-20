@@ -218,6 +218,7 @@ namespace Vk {
     #include <sys/syscall.h>
     #include <cstring>
     #include <fstream>
+    #include <chrono>
     #include <climits>
     #include <codecvt>
     #include <locale>
@@ -270,8 +271,26 @@ namespace Vk {
     using RECT = tagRECT;
 
     // SEH types (stubs for Linux — SEH doesn't exist, only on Windows)
-    struct EXCEPTION_POINTERS;
+    struct _EXCEPTION_RECORD { unsigned long ExceptionCode; unsigned long ExceptionFlags; void* ExceptionRecord; void* ExceptionAddress; unsigned long NumberParameters; unsigned long ExceptionInformation[15]; };
+    struct _CONTEXT { unsigned long placeholder[256]; };
+    struct EXCEPTION_POINTERS { _EXCEPTION_RECORD* ExceptionRecord; _CONTEXT* ContextRecord; };
     using LONG = int32_t;
+    #define EXCEPTION_ACCESS_VIOLATION 0xC0000005L
+    #define EXCEPTION_ARRAY_BOUNDS_EXCEEDED 0xC000008CL
+    #define EXCEPTION_BREAKPOINT 0x80000003L
+    #define EXCEPTION_DATATYPE_MISALIGNMENT 0x80000002L
+    #define EXCEPTION_FLT_DENORMAL_OPERAND 0xC000008DL
+    #define EXCEPTION_FLT_DIVIDE_BY_ZERO 0xC000008EL
+    #define EXCEPTION_FLT_INEXACT_RESULT 0xC000008FL
+    #define EXCEPTION_FLT_INVALID_OPERATION 0xC0000090L
+    #define EXCEPTION_FLT_OVERFLOW 0xC0000091L
+    #define EXCEPTION_FLT_STACK_CHECK 0xC0000092L
+    #define EXCEPTION_FLT_UNDERFLOW 0xC0000093L
+    #define EXCEPTION_ILLEGAL_INSTRUCTION 0xC000001DL
+    #define EXCEPTION_INT_DIVIDE_BY_ZERO 0xC0000094L
+    #define EXCEPTION_INT_OVERFLOW 0xC0000095L
+    #define EXCEPTION_PRIV_INSTRUCTION 0xC0000096L
+    #define EXCEPTION_STACK_OVERFLOW 0xC00000FDL
 
     // VK_* macros → canonical Vk::* constants
     #define VK_LBUTTON   Vk::LBUTTON
@@ -395,7 +414,7 @@ namespace Vk {
     using LPSTR = char*;
 
     // Additional Win32 types
-    union LARGE_INTEGER { int64_t QuadPart; struct { int32_t LowPart; int32_t HighPart; } u; };
+    union LARGE_INTEGER { int64_t QuadPart; int32_t LowPart; int32_t HighPart; struct { int32_t LowPart; int32_t HighPart; } u; };
     #define IMAGE_CURSOR 2
     #define IMAGE_ICON 1
     #define IMAGE_BITMAP 0
@@ -515,8 +534,7 @@ namespace Vk {
     #define MOVEFILE_WRITE_THROUGH 8
     inline int MoveFileExW(const wchar_t*, const wchar_t*, unsigned long) { return 0; }
     struct FILETIME { unsigned long dwLowDateTime; unsigned long dwHighDateTime; };
-    union ULARGE_INTEGER { uint64_t QuadPart; struct { unsigned long LowPart; unsigned long HighPart; } u; };
-    inline int SystemTimeToFileTime(const void*, FILETIME*) { return 0; }
+    union ULARGE_INTEGER { uint64_t QuadPart; unsigned long LowPart; unsigned long HighPart; struct { unsigned long LowPart; unsigned long HighPart; } u; };
     inline int FileTimeToSystemTime(const FILETIME*, void*) { return 0; }
     inline int LocalFileTimeToFileTime(const FILETIME*, FILETIME*) { return 0; }
     inline int FileTimeToLocalFileTime(const FILETIME*, FILETIME*) { return 0; }
@@ -549,6 +567,65 @@ namespace Vk {
     #define CF_TEXT 1
     #define CF_UNICODETEXT 13
     #define CF_BITMAP 2
+
+    // Process info stubs
+    #define PROCESS_QUERY_LIMITED_INFORMATION 0x1000
+    inline void* OpenProcess(unsigned long, int, unsigned long) { return nullptr; }
+    inline int CloseHandle(void*) { return 1; }
+    inline int GetProcessTimes(void*, FILETIME*, FILETIME*, FILETIME*, FILETIME*) { return 0; }
+
+    // File attribute stubs
+    struct WIN32_FILE_ATTRIBUTE_DATA {
+        unsigned long dwFileAttributes;
+        FILETIME ftCreationTime, ftLastAccessTime, ftLastWriteTime;
+        unsigned long nFileSizeHigh, nFileSizeLow;
+    };
+    #define GetFileExInfoStandard 0
+    inline int GetFileAttributesExW(const wchar_t*, int, WIN32_FILE_ATTRIBUTE_DATA*) { return 0; }
+
+    // Time stubs
+    struct SYSTEMTIME { unsigned short wYear, wMonth, wDayOfWeek, wDay, wHour, wMinute, wSecond, wMilliseconds; };
+    inline void GetSystemTimeAsFileTime(FILETIME* ft) {
+        auto now = std::chrono::system_clock::now();
+        auto sinceEpoch = now.time_since_epoch();
+        auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(sinceEpoch).count();
+        uint64_t ftVal = static_cast<uint64_t>(ns) / 100 + 116444736000000000ULL;
+        ft->dwLowDateTime  = static_cast<unsigned long>(ftVal & 0xFFFFFFFF);
+        ft->dwHighDateTime = static_cast<unsigned long>(ftVal >> 32);
+    }
+    inline int SystemTimeToFileTime(const SYSTEMTIME*, FILETIME* ft) { GetSystemTimeAsFileTime(ft); return 1; }
+    inline int FileTimeToSystemTime(const FILETIME*, SYSTEMTIME* st) {
+        memset(st, 0, sizeof(*st)); return 1;
+    }
+
+    // Shell stubs
+    #define CSIDL_LOCAL_APPDATA 0x001c
+    inline int SHGetFolderPathW(void*, int, void*, unsigned long, wchar_t* path) {
+        const char* xdg = getenv("XDG_DATA_HOME");
+        if (!xdg) xdg = getenv("HOME");
+        if (xdg) { mbstowcs(path, xdg, 255); return 0; }
+        wcscpy(path, L"/tmp"); return 0;
+    }
+
+    // Additional stubs
+    inline int GetTempPathW(unsigned long, wchar_t* path) { wcscpy(path, L"/tmp/"); return 4; }
+    inline void GetLocalTime(SYSTEMTIME* st) {
+        auto now = std::chrono::system_clock::now();
+        time_t t = std::chrono::system_clock::to_time_t(now);
+        struct tm* tm = localtime(&t);
+        st->wYear = tm->tm_year + 1900; st->wMonth = tm->tm_mon + 1; st->wDay = tm->tm_mday;
+        st->wHour = tm->tm_hour; st->wMinute = tm->tm_min; st->wSecond = tm->tm_sec; st->wMilliseconds = 0;
+    }
+    inline int WriteFile(void*, const void*, unsigned long, DWORD*, void*) { return 0; }
+    inline int FlushFileBuffers(void*) { return 0; }
+    inline int MoveFileW(const wchar_t*, const wchar_t*) { return 0; }
+    #define FILE_SHARE_READ 1
+    #define FILE_SHARE_WRITE 2
+    #define FILE_SHARE_DELETE 4
+    #define ERROR_ALREADY_EXISTS 183L
+    #define OPEN_EXISTING 3
+    inline void* CreateFileW(const wchar_t*, unsigned long, unsigned long, void*, unsigned long, unsigned long, void*) { return reinterpret_cast<void*>(-1); }
+    inline int swprintf_s(wchar_t* buf, const wchar_t*, ...) { if (buf) buf[0] = L'\0'; return 0; }
 
     // GetCurrentProcessId polyfill
     inline unsigned long GetCurrentProcessId() { return static_cast<unsigned long>(::getpid()); }
