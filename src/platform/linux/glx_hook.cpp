@@ -109,7 +109,7 @@ void InstallJump(void* target, void* destination, uint8_t* backup) {
     // Make page writable
     size_t span = PageSpan(target, kJumpSize);
     if (mprotect(PageAlign(target), span, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
-        HOOK_LOG("[Toolscreen] mprotect FAILED for %p: %s\n", target, strerror(errno));
+        //HOOK_LOG("[Toolscreen] mprotect FAILED for %p: %s\n", target, strerror(errno));
         return;
     }
 
@@ -132,7 +132,7 @@ void InstallJump(void* target, void* destination, uint8_t* backup) {
 void RestoreJump(void* target, const uint8_t* backup) {
     size_t span = PageSpan(target, kJumpSize);
     if (mprotect(PageAlign(target), span, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
-        HOOK_LOG("[Toolscreen] mprotect RWX (restore) failed for %p: %s\n", target, strerror(errno));
+        //HOOK_LOG("[Toolscreen] mprotect RWX (restore) failed for %p: %s\n", target, strerror(errno));
         return;
     }
     memcpy(target, backup, kJumpSize);
@@ -146,7 +146,7 @@ void* CreateTrampoline(void* target, const uint8_t* backup) {
     void* tramp = mmap(nullptr, trampSize, PROT_READ | PROT_WRITE | PROT_EXEC,
                        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (tramp == MAP_FAILED) {
-        HOOK_LOG("[Toolscreen] mmap trampoline failed\n");
+        //HOOK_LOG("[Toolscreen] mmap trampoline failed\n");
         return nullptr;
     }
 
