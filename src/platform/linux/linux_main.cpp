@@ -148,6 +148,29 @@ std::atomic<bool> g_stopImageMonitoring{false};
 // Misc
 HMODULE g_hModule = nullptr;
 
+// ---- Function stubs for symbols expected by the codebase ----
+// These are defined in Windows .cpp files; on Linux they are stubs.
+
+void ApplyWindowsMouseSpeed() {}
+void RestoreWindowsMouseSpeed() {}
+void ApplyKeyRepeatSettings() {}
+void RestoreKeyRepeatSettings() {}
+void ClearTempSensitivityOverride() {}
+void GetEffectiveKeyRepeatTimings(int& delay, int& rate) { delay = 0; rate = 0; }
+void RebuildHotkeyMainKeys_Internal() {}
+void ResetAllHotkeySecondaryModes() {}
+void ResetAllHotkeySecondaryModes(const Config&) {}
+
+bool BlitFramebufferDirect(GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLbitfield, GLenum) { return false; }
+void BindTextureDirect(GLenum, GLuint) {}
+void InvalidateTrackedGameTextureId(bool, bool) {}
+GLuint GetObsCaptureTexture() { return 0; }
+
+bool ClipCursorDirect(const PlatformRect* r) { return X11Cursor::ClipCursor(r), true; }
+bool ApplyConfineCursorToGameWindow() { return false; }
+void ApplyDeferredGuiCursorModeAfterClose() {}
+void FinalizeGuiCursorStateAfterClose() {}
+
 namespace {
 
 std::atomic<bool> g_initialized{false};
