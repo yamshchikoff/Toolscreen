@@ -42,8 +42,6 @@ void LinuxSignalHandler(int sig, siginfo_t* info, void* /*ctx*/) {
     // (no locale, no floating-point, no malloc for small buffers).
     char buf[256];
     int len = snprintf(buf, sizeof(buf),
-    char buf[256];
-    int len = snprintf(buf, sizeof(buf),
                        "[Toolscreen] FATAL: signal %d (%s) addr=%p\n",
                        sig, sigName, info ? info->si_addr : nullptr);
     if (len > 0) write(STDERR_FILENO, buf, static_cast<size_t>(len));

@@ -58,8 +58,6 @@
 
 #ifdef _WIN32
 #pragma comment(lib, "Shlwapi.lib")
-#endif
-#ifdef _WIN32
 #pragma comment(lib, "Winhttp.lib")
 #endif
 
