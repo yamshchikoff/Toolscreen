@@ -409,23 +409,26 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     // so we must do it here — not in Initialize()).
     // Detect GL context change (e.g. fullscreen ↔ windowed toggle in Minecraft)
     // and reinitialize GLEW so function pointers point to the current context.
-    static GLXContext s_glewContext = nullptr;
+    // NOTE: Minecraft calls glXSwapBuffers from a single render thread,
+    // so this path is not contended. s_glewContext is still atomic as a safeguard.
+    static std::atomic<GLXContext> s_glewContext{nullptr};
     GLXContext currentCtx = glXGetCurrentContext();
-    bool contextChanged = (currentCtx != s_glewContext);
+    GLXContext prevCtx = s_glewContext.load(std::memory_order_acquire);
+    bool contextChanged = (currentCtx != prevCtx);
     if (contextChanged) {
         HOOK_LOG("[Toolscreen] GL context changed: %p → %p, resetting GLEW\n",
-                reinterpret_cast<void*>(s_glewContext),
+                reinterpret_cast<void*>(prevCtx),
                 reinterpret_cast<void*>(currentCtx));
         g_glewReady.store(false, std::memory_order_release);
-        s_glewContext = currentCtx;
+        s_glewContext.store(currentCtx, std::memory_order_release);
     }
     if (!g_glewReady.load(std::memory_order_acquire)) {
         GLenum glewErr = glewInit();
         if (glewErr == GLEW_OK) {
             g_glewReady.store(true, std::memory_order_release);
-            s_glewContext = glXGetCurrentContext();
+            s_glewContext.store(glXGetCurrentContext(), std::memory_order_release);
             HOOK_LOG("[Toolscreen] GLEW initialized OK (context %p)\n",
-                    reinterpret_cast<void*>(s_glewContext));
+                    reinterpret_cast<void*>(s_glewContext.load()));
         } else {
             HOOK_LOG("[Toolscreen] GLEW init failed: %s\n",
                     reinterpret_cast<const char*>(glewGetErrorString(glewErr)));
@@ -434,17 +437,22 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
 
     // ---- Create ImGui context BEFORE window detection ----
     // (ImGui_ImplX11_Init calls ImGui::GetIO() which needs a context)
-    static bool g_imguiInitialized = false;
+    // Protected by std::call_once — safe against concurrent first calls
+    // even if the render thread were to race (belt and suspenders).
+    static std::once_flag g_imguiInitFlag;
+    static std::atomic<bool> g_imguiInitialized{false};
     static ImGuiContext* g_imguiCtx = nullptr;
-    if (!g_imguiInitialized && g_glewReady.load()) {
-        IMGUI_CHECKVERSION();
-        g_imguiCtx = ImGui::CreateContext();
-        ImGui::SetCurrentContext(g_imguiCtx);
-        ImGui_ImplOpenGL3_Init("#version 330");
-        ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-        ImGui::GetStyle().FrameRounding = 3.0f;
-        g_imguiInitialized = true;
-        HOOK_LOG("[Toolscreen] ImGui initialized (X11/OpenGL3)\n");
+    if (!g_imguiInitialized.load(std::memory_order_acquire) && g_glewReady.load()) {
+        std::call_once(g_imguiInitFlag, [&]() {
+            IMGUI_CHECKVERSION();
+            g_imguiCtx = ImGui::CreateContext();
+            ImGui::SetCurrentContext(g_imguiCtx);
+            ImGui_ImplOpenGL3_Init("#version 330");
+            ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+            ImGui::GetStyle().FrameRounding = 3.0f;
+            g_imguiInitialized.store(true, std::memory_order_release);
+            HOOK_LOG("[Toolscreen] ImGui initialized (X11/OpenGL3)\n");
+        });
     }
 
 
