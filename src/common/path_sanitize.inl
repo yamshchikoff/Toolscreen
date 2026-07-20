@@ -83,17 +83,6 @@ std::wstring SanitizePathForDisplay(const std::wstring& path) {
     return SanitizePathForDisplayImpl(path, CachedUserHomeDir());
 }
 
-std::string SanitizePathForDisplay(const std::string& path) {
-    return WideToUtf8(SanitizePathForDisplay(Utf8ToWide(path)));
-}
-
-std::string FileNameForDisplay(const std::string& path) {
-    if (path.empty()) { return path; }
-    const size_t pos = path.find_last_of("/\\");
-    if (pos == std::string::npos) { return path; }
-    return path.substr(pos + 1);
-}
-
 #else
 // Linux: home-directory based sanitisation
 namespace {
@@ -121,3 +110,15 @@ std::wstring SanitizePathForDisplay(const std::wstring& path) {
     return SanitizePathForDisplayImpl(path, homeDir);
 }
 #endif
+
+// Cross-platform overloads (available on both Windows and Linux)
+std::string SanitizePathForDisplay(const std::string& path) {
+    return WideToUtf8(SanitizePathForDisplay(Utf8ToWide(path)));
+}
+
+std::string FileNameForDisplay(const std::string& path) {
+    if (path.empty()) { return path; }
+    const size_t pos = path.find_last_of("/\\");
+    if (pos == std::string::npos) { return path; }
+    return path.substr(pos + 1);
+}

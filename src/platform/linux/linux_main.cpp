@@ -14,6 +14,12 @@
 #include "common/profiler.h"
 #include "bootstrap/shared_init.h"
 
+// X11 #defines None as 0L — must undefine before using GameStateSourceKind::None
+#ifdef None
+#undef None
+#endif
+#include "features/game_state_source.h"
+
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -148,6 +154,84 @@ std::atomic<bool> g_stopImageMonitoring{false};
 // Misc
 HMODULE g_hModule = nullptr;
 
+// Additional globals from dllmain.cpp (types from gui.h/utils.h)
+GameVersion g_gameVersion;
+std::atomic<bool> g_pendingImageLoad{false};
+std::mutex g_hotkeyTimestampsMutex;
+std::atomic<GLuint> g_cachedGameTextureId{0};
+
+// g_configSnapshot for GetConfigSnapshot/PublishConfigSnapshot
+std::atomic<std::shared_ptr<const Config>> g_configSnapshot;
+
+// Remaining globals from dllmain.cpp
+std::vector<DecodedImageData> g_decodedImagesQueue;
+std::atomic<bool> g_imageDragMode{false};
+std::atomic<bool> g_windowOverlayDragMode{false};
+std::atomic<bool> g_browserOverlayDragMode{false};
+std::atomic<bool> g_mirrorDragMode{false};
+std::atomic<bool> g_ninjabrainOverlayDragMode{false};
+
+// More globals (types from game_state_source.h + utils.h)
+std::atomic<GameStateSourceKind> g_activeGameStateSource{GameStateSourceKind::None};
+
+// GRAPHICS_HOOK_CHECK_INTERVAL_MS (declared extern const int in utils.h)
+// Viewport transition
+ViewportTransitionSnapshot g_viewportTransitionSnapshots[2];
+std::atomic<int> g_viewportTransitionSnapshotIndex{0};
+
+// ImGui Win32 stubs (called from gui_runtime.cpp on both platforms)
+void ImGui_ImplWin32_Init(void*) {}
+void ImGui_ImplWin32_NewFrame() {}
+void ImGui_ImplWin32_Shutdown() {}
+ImGuiKey ImGui_ImplWin32_KeyEventToImGuiKey(WPARAM, LPARAM) { return ImGuiKey_None; }
+
+// Mode/state (types from gui.h — declared extern, defined in dllmain.cpp)
+ModeTransitionAnimation g_modeTransition;
+PendingModeSwitch g_pendingModeSwitch;
+TempSensitivityOverride g_tempSensitivityOverride{};
+
+// ---- Function implementations from dllmain.cpp ----
+std::shared_ptr<const Config> GetConfigSnapshot() {
+    return g_configSnapshot.load(std::memory_order_acquire);
+}
+
+std::string GetPublishedCurrentModeId() {
+    const int index = g_currentModeIdIndex.load(std::memory_order_acquire);
+    return g_modeIdBuffers[index];
+}
+
+void PublishConfigSnapshot(const Config& config) {
+    static std::mutex s_mutex;
+    static std::shared_ptr<const Config> s_current;
+    std::lock_guard<std::mutex> lock(s_mutex);
+    auto newSnap = std::make_shared<const Config>(config);
+    s_current = newSnap;
+    g_configSnapshot.store(newSnap, std::memory_order_release);
+    g_configSnapshotVersion.fetch_add(1, std::memory_order_release);
+}
+
+void PublishConfigSnapshot() {
+    PublishConfigSnapshot(g_config);
+}
+
+bool PublishConfigSnapshotIfUnchanged(const std::shared_ptr<const Config>& expected, const Config& config) {
+    if (g_configSnapshot.load(std::memory_order_acquire) == expected) {
+        PublishConfigSnapshot(config);
+        return true;
+    }
+    return false;
+}
+
+std::string GetHotkeySecondaryMode(size_t index) { return ""; }
+void SetHotkeySecondaryMode(size_t index, const std::string& mode) {}
+void ResizeHotkeySecondaryModes(size_t newSize) {}
+
+// Timing (declared extern as std::atomic in gui.h — must match)
+std::atomic<double> g_lastFrameTimeMs{0.0};
+std::atomic<double> g_originalFrameTimeMs{0.0};
+std::atomic<int64_t> g_lastGuiToggleTimeMs{0};
+std::atomic<int> g_wmMouseMoveCount{0};
+
 // ---- Function stubs for symbols expected by the codebase ----
 // These are defined in Windows .cpp files; on Linux they are stubs.
 
@@ -166,6 +250,13 @@ void BindTextureDirect(GLenum, GLuint) {}
 void InvalidateTrackedGameTextureId(bool, bool) {}
 GLuint GetObsCaptureTexture() { return 0; }
 
+// WGL third-party hook stubs (not needed on Linux — LD_PRELOAD handles interposition)
+std::atomic<void*> g_wglSwapBuffersThirdPartyHookTarget{nullptr};
+std::atomic<void*> g_lastSkippedWglSwapBuffersStart{nullptr};
+std::atomic<void*> g_lastSkippedWglSwapBuffersTarget{nullptr};
+void* g_owglSwapBuffersThirdParty = nullptr;
+
+// Additional Windows-only stubs
 bool ClipCursorDirect(const PlatformRect* r) { return X11Cursor::ClipCursor(r), true; }
 bool ApplyConfineCursorToGameWindow() { return false; }
 void ApplyDeferredGuiCursorModeAfterClose() {}
