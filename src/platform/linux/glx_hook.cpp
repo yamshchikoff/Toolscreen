@@ -14,6 +14,12 @@
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "common/profiler.h"
+// X11 #defines None as 0L — must undefine before gl_overlay.h (which
+// transitively includes game_state_source.h with enum class None = 0)
+#ifdef None
+#undef None
+#endif
+#include "common/gl_overlay.h"
 
 #ifdef PLATFORM_LINUX
 // Lazy init from linux_main.cpp (avoids X11 in constructor)
@@ -168,7 +174,7 @@ void* CreateTrampoline(void* target, const uint8_t* backup) {
 
 // Routes X11 input events to ImGui. Called from X11Input::PollEvents() via
 // the event callback set up when the game window is first detected.
-bool g_inputWired = false;
+std::atomic<bool> g_inputWired{false};
 
 bool RouteX11EventToImGui(const X11Input::InputEvent& ev) {
     using ET = X11Input::EventType;
@@ -407,6 +413,9 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     GLXContext currentCtx = glXGetCurrentContext();
     bool contextChanged = (currentCtx != s_glewContext);
     if (contextChanged) {
+        HOOK_LOG("[Toolscreen] GL context changed: %p → %p, resetting GLEW\n",
+                reinterpret_cast<void*>(s_glewContext),
+                reinterpret_cast<void*>(currentCtx));
         g_glewReady.store(false, std::memory_order_release);
         s_glewContext = currentCtx;
     }
@@ -458,21 +467,48 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
 
     // ---- Render GUI (context already created above) ----
     // ---- Render ImGui overlay ----
+    // Debug frame counter (log every 100th frame)
+    static int g_frameCounter = 0;
+    ++g_frameCounter;
+    bool shouldLog = (g_frameCounter % 100 == 1);
+
     if (g_imguiInitialized && g_imguiCtx && X11Display::GetGameWindow() != 0) {
-        ImGui::SetCurrentContext(g_imguiCtx);
-        ImGuiIO& io = ImGui::GetIO();
-        if (io.DisplaySize.x <= 0.0f) {
-            io.DisplaySize = ImVec2(1920.0f, 1080.0f);
-            io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
+        // Verify GL context is still alive before touching GL state
+        if (!glXGetCurrentContext()) {
+            if (shouldLog) HOOK_LOG("[Toolscreen] Frame %d: no GL context, skipping render\n", g_frameCounter);
+            // Skip this frame — no GL context to render into
+            inHkSwap = false;
+            static SwapBuffersFunc s_fallbackSwap = nullptr;
+            if (!s_fallbackSwap) s_fallbackSwap = reinterpret_cast<SwapBuffersFunc>(dlsym(RTLD_NEXT, "glXSwapBuffers"));
+            if (s_fallbackSwap) s_fallbackSwap(dpy, drawable);
+            return;
         }
-        X11Input::PollEvents();
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplX11_NewFrame();
-        ImGui::NewFrame();
-        static bool showDemo = true;
-        ImGui::ShowDemoWindow(&showDemo);
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+        // Save & restore GL state around ImGui rendering.
+        // ImGui_ImplOpenGL3_RenderDrawData internally saves/restores blend, scissor,
+        // depth, cull, stencil, viewport, program, VAO, textures — but does NOT
+        // restore GL_DRAW_FRAMEBUFFER_BINDING. Sodium renders into custom FBOs;
+        // leaving the FBO unbound after ImGui crashes the NVIDIA driver.
+        if (shouldLog) HOOK_LOG("[Toolscreen] Frame %d: saving GL state, rendering ImGui\n", g_frameCounter);
+        {
+            gloverlay::ScopedState glState;
+
+            ImGui::SetCurrentContext(g_imguiCtx);
+            ImGuiIO& io = ImGui::GetIO();
+            if (io.DisplaySize.x <= 0.0f) {
+                io.DisplaySize = ImVec2(1920.0f, 1080.0f);
+                io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
+            }
+            X11Input::PollEvents();
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplX11_NewFrame();
+            ImGui::NewFrame();
+            static bool showDemo = true;
+            ImGui::ShowDemoWindow(&showDemo);
+            ImGui::Render();
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        }
+        if (shouldLog) HOOK_LOG("[Toolscreen] Frame %d: GL state restored\n", g_frameCounter);
     }
 
     // Call the real glXSwapBuffers via RTLD_NEXT (not trampoline!)
@@ -482,7 +518,8 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     }
     inHkSwap = false;
     if (s_realSwap) s_realSwap(dpy, drawable);
-    inHkSwap = true;
+    // Reset recursion guard for next frame
+    inHkSwap = false;
 }
 
 void hk_glViewport(GLint x, GLint y, GLsizei width, GLsizei height) {
