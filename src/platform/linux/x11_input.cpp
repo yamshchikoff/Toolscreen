@@ -140,6 +140,10 @@ void PollEvents() {
             valid = true;
             break;
         case ButtonRelease:
+            // Button4/5 (scroll wheel) generate events only on press,
+            // not on release — otherwise scrolling would double-fire.
+            if (ev.xbutton.button == Button4 || ev.xbutton.button == Button5)
+                break;
             inputEv = XButtonEventToInputEvent(ev.xbutton, false);
             valid = true;
             break;
