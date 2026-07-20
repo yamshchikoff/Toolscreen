@@ -55,9 +55,6 @@ BlitFramebufferFunc g_realBlitFramebuffer = nullptr;
 
 namespace {
 
-// Forward declare for inline hook engine (defined after namespace)
-static void HOOK_LOG(const char* fmt, ...) __attribute__((format(printf,1,2)));
-
 // ---- Inline hook engine (kept for potential future non-GL use) ----
 // Replaces the core MinHook functionality using mprotect + trampolines.
 // x86-64 only: installs a 14-byte absolute jump: mov rax, imm64; jmp rax
@@ -441,19 +438,6 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
         HOOK_LOG("[Toolscreen] ImGui initialized (X11/OpenGL3)\n");
     }
 
-    // ---- Create ImGui context BEFORE window detection ----
-    static bool g_imguiInitialized = false;
-    static ImGuiContext* g_imguiCtx = nullptr;
-    if (!g_imguiInitialized && g_glewReady.load()) {
-        IMGUI_CHECKVERSION();
-        g_imguiCtx = ImGui::CreateContext();
-        ImGui::SetCurrentContext(g_imguiCtx);
-        ImGui_ImplOpenGL3_Init("#version 330");
-        ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-        ImGui::GetStyle().FrameRounding = 3.0f;
-        g_imguiInitialized = true;
-        HOOK_LOG("[Toolscreen] ImGui initialized (X11/OpenGL3)\n");
-    }
 
     // Detect/update game window from current GLX drawable
     {
