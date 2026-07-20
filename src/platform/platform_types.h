@@ -546,7 +546,7 @@ namespace Vk {
     inline int CompareFileTime(const FILETIME*, const FILETIME*) { return 0; }
 
     // Window manipulation stubs
-    inline int GetWindowThreadProcessId(void*, unsigned long*) { return 0; }
+    inline int GetWindowThreadProcessId(void*, DWORD*) { return 0; }
     inline intptr_t GetWindowLongPtr(void*, int) { return 0; }
     inline intptr_t SetWindowLongPtr(void*, int, intptr_t) { return 0; }
     #define GWL_STYLE (-16)
@@ -630,7 +630,7 @@ namespace Vk {
     #define SUCCEEDED(hr) (static_cast<int>(hr) >= 0)
     using WCHAR = wchar_t;
     inline int GetModuleHandleEx(unsigned long, const wchar_t*, void**) { return 0; }
-    inline int GetCurrentDirectoryW(unsigned long, wchar_t*) { wchar_t cwd[] = L"."; wcscpy((wchar_t*)cwd, cwd); return 1; }
+    inline int GetCurrentDirectoryW(unsigned long, wchar_t* buf) { if (buf) wcscpy(buf, L"."); return 1; }
     inline int SHCreateDirectoryExW(void*, const wchar_t*, void*) { return 0; }
     inline LONG (*SetUnhandledExceptionFilter(LONG (*)(EXCEPTION_POINTERS*)))(EXCEPTION_POINTERS*) { return nullptr; }
     inline void _set_se_translator(void (*)(unsigned int, EXCEPTION_POINTERS*)) {}
@@ -649,8 +649,8 @@ namespace Vk {
     // Window visibility stubs
     inline int IsWindowVisible(void*) { return 0; }
     inline int GetWindowRect(void*, RECT* r) { if (r) { r->left = r->top = 0; r->right = 1920; r->bottom = 1080; } return 1; }
-    inline int MonitorFromWindow(void*, unsigned long) { return 0; }
     using HMONITOR = void*;
+    inline HMONITOR MonitorFromWindow(void*, unsigned long) { return nullptr; }
     #define MONITOR_DEFAULTTONEAREST 2
     inline HMONITOR MonitorFromRect(const RECT*, unsigned long) { return nullptr; }
     struct MONITORINFO { unsigned long cbSize; RECT rcMonitor; RECT rcWork; unsigned long dwFlags; };
@@ -659,6 +659,216 @@ namespace Vk {
     inline int GetClientRect(void*, RECT* r) { if (r) { r->left = r->top = 0; r->right = 1920; r->bottom = 1080; } return 1; }
     inline int ScreenToClient(void*, POINT*) { return 1; }
     using LPPOINT = POINT*;
+    inline int ClientToScreen(void*, POINT*) { return 1; }
+
+    // Cursor stubs
+    struct CURSORINFO { unsigned long cbSize; unsigned long flags; void* hCursor; POINT ptScreenPos; };
+    #define CURSOR_SHOWING 1
+    inline int GetCursorInfo(CURSORINFO* ci) { if (ci) { ci->flags = 0; ci->hCursor = nullptr; ci->ptScreenPos = {0,0}; } return 1; }
+    inline void* GetCursor() { return nullptr; }
+
+    // Path/shell stubs
+    inline int PathIsRelativeW(const wchar_t*) { return 1; }
+    inline unsigned int GetDpiForWindow(void*) { return 96; }
+    #define USER_DEFAULT_SCREEN_DPI 96
+    inline int AdjustWindowRectExForDpi(RECT*, unsigned long, int, unsigned long, unsigned int) { return 1; }
+
+    // File stubs
+    #define GENERIC_READ 0x80000000L
+    inline int ReadFile(void*, void*, unsigned long, DWORD*, void*) { return 0; }
+    inline void Sleep(unsigned long ms) { usleep(ms * 1000); }
+
+    // More file stubs
+    inline int fopen_s(FILE** f, const char* path, const char* mode) { *f = fopen(path, mode); return *f ? 0 : 1; }
+    inline int GetFileTime(void*, FILETIME*, FILETIME*, FILETIME*) { return 1; }
+    inline unsigned long SetFilePointer(void*, long, long*, unsigned long) { return 0; }
+    #define FILE_BEGIN 0
+    #define INVALID_SET_FILE_POINTER 0xFFFFFFFF
+    inline unsigned long GetFileSize(void*, unsigned long*) { return 0; }
+
+    // Input stubs
+    inline short GetKeyState(int) { return 0; }
+    inline short GetAsyncKeyState(int) { return 0; }
+    using BYTE = uint8_t;
+    using SIZE_T = size_t;
+
+    // Bitmap/clipboard stubs
+    #define BI_RGB 0
+    #define CF_DIB 8
+    #define GMEM_MOVEABLE 2
+    struct BITMAPINFOHEADER { unsigned long biSize; long biWidth, biHeight; unsigned short biPlanes, biBitCount; unsigned long biCompression, biSizeImage; long biXPelsPerMeter, biYPelsPerMeter; unsigned long biClrUsed, biClrImportant; };
+    inline void* GlobalAlloc(unsigned int, size_t) { return malloc(1024); }
+    inline void* GlobalFree(void* p) { free(p); return nullptr; }
+
+    // Directory stubs
+    inline int CreateDirectoryW(const wchar_t*, void*) { return 1; }
+    inline int CopyFileW(const wchar_t*, const wchar_t*, int) { return 0; }
+
+    // Window message stubs
+    inline unsigned int RegisterWindowMessageA(const char*) { return 0; }
+    inline int IsIconic(void*) { return 0; }
+    inline int IsZoomed(void*) { return 0; }
+    #define SW_RESTORE 9
+    inline int ShowWindow(void*, int) { return 1; }
+    #define SWP_NOOWNERZORDER 0x200
+    #define WM_SIZE 5
+    #define SIZE_RESTORED 0
+    #define MAKELPARAM(a,b) static_cast<LPARAM>((static_cast<unsigned short>(a)) | (static_cast<unsigned int>(b) << 16))
+    inline int PostMessage(void*, unsigned int, WPARAM, LPARAM) { return 1; }
+    inline void SetLastError(unsigned long) {}
+    using LONG_PTR = intptr_t;
+    #define WS_CAPTION 0xC00000
+    #define WS_BORDER 0x800000
+    #define WS_DLGFRAME 0x400000
+    #define WS_THICKFRAME 0x40000
+    #define WS_MINIMIZEBOX 0x20000
+    #define WS_MAXIMIZEBOX 0x10000
+    #define WS_SYSMENU 0x80000
+    #define WS_MINIMIZE 0x20000000
+    #define WS_MAXIMIZE 0x1000000
+    #define WS_CHILD 0x40000000
+    #define WS_OVERLAPPED 0
+    #define WS_OVERLAPPEDWINDOW (WS_CAPTION|WS_SYSMENU|WS_THICKFRAME|WS_MINIMIZEBOX|WS_MAXIMIZEBOX)
+    #define WS_EX_TOOLWINDOW 0x80
+    #define WS_EX_WINDOWEDGE 0x100
+    #define WS_EX_CLIENTEDGE 0x200
+    #define WS_EX_DLGMODALFRAME 1
+    #define WS_EX_STATICEDGE 0x20000
+    #define WS_EX_APPWINDOW 0x40000
+    #define WS_SIZEBOX WS_THICKFRAME
+    #define SW_SHOW 5
+    #define SW_HIDE 0
+
+    // Registry stubs
+    using HKEY = void*;
+    #define HKEY_CLASSES_ROOT reinterpret_cast<void*>(0x80000000)
+    #define KEY_READ 0x20019
+    inline int RegOpenKeyExA(void*, const char*, unsigned long, unsigned long, HKEY*) { return 1; }
+    inline int RegCloseKey(void*) { return 0; }
+
+    // Cursor stubs
+    #define IDC_ARROW reinterpret_cast<wchar_t*>(32512)
+    #define IS_INTRESOURCE(x) (reinterpret_cast<uintptr_t>(x) >> 16 == 0)
+    #define LR_LOADFROMFILE 16
+    typedef void* HANDLE;
+    inline void* LoadImageW(void*, const wchar_t*, unsigned int, int, int, unsigned int) { return nullptr; }
+    inline int DestroyCursor(void*) { return 1; }
+    #define ERROR_PATH_NOT_FOUND 3L
+
+    // Memory/file mapping stubs
+    inline void MemoryBarrier() { __sync_synchronize(); }
+    inline int GetFileAttributesA(const char*) { return -1; }
+    #define FILE_MAP_READ 4
+    inline void* OpenFileMappingW(unsigned long, int, const wchar_t*) { return nullptr; }
+    inline void* MapViewOfFile(void*, unsigned long, unsigned long, unsigned long, size_t) { return nullptr; }
+    inline int GetFileSizeEx(void*, LARGE_INTEGER*) { return 0; }
+    inline int UnmapViewOfFile(void*) { return 1; }
+    #define PAGE_READWRITE 4
+    inline void* CreateFileMappingW(void*, void*, unsigned long, unsigned long, unsigned long, const wchar_t*) { return nullptr; }
+    #define FILE_MAP_ALL_ACCESS 0xF001F
+    inline int GetCursorPos(POINT* p) { if (p) { p->x = p->y = 0; } return 1; }
+
+    // More error codes
+    #define ERROR_INVALID_PARAMETER 87L
+    #define ERROR_NOT_ENOUGH_MEMORY 8L
+    #define ERROR_RESOURCE_TYPE_NOT_FOUND 1813L
+
+    // Image/cursor stubs
+    inline void* CopyImage(void*, unsigned int, int, int, unsigned int) { return nullptr; }
+    struct ICONINFOEXW { unsigned long cbSize; int fIcon; int xHotspot, yHotspot; void* hbmMask; void* hbmColor; unsigned short wResID; wchar_t szModName[260]; wchar_t szResName[260]; };
+    inline int GetIconInfoExW(void*, ICONINFOEXW*) { return 0; }
+    struct BITMAP { long bmType, bmWidth, bmHeight, bmWidthBytes; unsigned short bmPlanes, bmBitsPixel; void* bmBits; };
+    inline int GetObject(void*, int, void*) { return 0; }
+    inline int DeleteObject(void*) { return 0; }
+    inline void* CreateCompatibleDC(void*) { return nullptr; }
+    inline int DeleteDC(void*) { return 0; }
+    inline void* GetDC(void*) { return nullptr; }
+    inline int ReleaseDC(void*, void*) { return 1; }
+    inline int GetWindowTextA(void*, char*, int) { return 0; }
+    inline int GetClassNameA(void*, char*, int) { return 0; }
+    inline int EnumWindows(int (*)(void*, LPARAM), LPARAM) { return 0; }
+    inline int InvalidateRect(void*, const RECT*, int) { return 1; }
+    #define RDW_INVALIDATE 1
+    #define RDW_FRAME 2
+    #define RDW_ALLCHILDREN 0x80
+    struct BITMAPINFO { BITMAPINFOHEADER bmiHeader; };
+    #define DIB_RGB_COLORS 0
+    inline int GetDIBits(void*, void*, unsigned int, unsigned int, void*, BITMAPINFO*, unsigned int) { return 0; }
+    inline void* SelectObject(void*, void*) { return nullptr; }
+    inline void* CreateDIBSection(void*, BITMAPINFO*, unsigned int, void**, void*, unsigned long) { return nullptr; }
+    inline void* wglGetCurrentContext() { return nullptr; }
+    inline void* LoadCursorW(void*, const wchar_t*) { return nullptr; }
+    inline int RedrawWindow(void*, const RECT*, void*, unsigned int) { return 1; }
+    #define WM_PAINT 15
+    #define WM_CAPTURECHANGED 0x215
+    #define SMTO_ABORTIFHUNG 2
+    #define SMTO_NORMAL 0
+    inline int SendMessageTimeoutW(void*, unsigned int, WPARAM, LPARAM, unsigned int, unsigned int, DWORD*) { return 0; }
+    inline void* CreateCompatibleBitmap(void*, int, int) { return nullptr; }
+    #define DKGRAY_BRUSH 3
+    inline void* GetStockObject(int) { return nullptr; }
+    inline int FillRect(void*, const RECT*, void*) { return 1; }
+    #define R2_COPYPEN 13
+    inline int SetROP2(void*, int) { return 0; }
+    using HRESULT = long;
+    #define SRCCOPY 0xCC0020
+    inline int BitBlt(void*, int, int, int, int, void*, int, int, unsigned long) { return 1; }
+
+    // Fix ReadFile 2nd overload for DWORD*
+    inline int ReadFile(void*, void*, unsigned long, unsigned long*, void*) { return 0; }
+
+    // DWM stubs
+    inline int DwmGetWindowAttribute(void*, unsigned long, void*, unsigned long) { return 0; }
+    #define PW_RENDERFULLCONTENT 2
+    inline int PrintWindow(void*, void*, unsigned int) { return 0; }
+
+    // More message constants
+    #define WM_SETFOCUS 7
+    #define WM_KILLFOCUS 8
+    #define WM_ACTIVATE 6
+    #define WA_ACTIVE 1
+    #define WA_INACTIVE 0
+    #define WM_MOUSEWHEEL 0x20A
+    #define WM_MOUSEHWHEEL 0x20E
+    #define WM_KEYDOWN 0x100
+    #define WM_CHAR 0x102
+    #define WM_SYSKEYDOWN 0x104
+    #define WM_SYSKEYUP 0x105
+    #define WM_LBUTTONDOWN 0x201
+    #define WM_LBUTTONUP 0x202
+    #define WM_RBUTTONDOWN 0x204
+    #define WM_RBUTTONUP 0x205
+    #define WM_MBUTTONDOWN 0x207
+    #define WM_MBUTTONUP 0x208
+    #define WM_XBUTTONDOWN 0x20B
+    #define WM_MOUSEMOVE 0x200
+    inline int SendMessage(void*, unsigned int, WPARAM, LPARAM) { return 0; }
+    inline int QueryFullProcessImageNameA(void*, unsigned long, char*, DWORD*) { return 0; }
+
+    // Keyboard stubs
+    inline unsigned int MapVirtualKeyA(unsigned int, unsigned int) { return 0; }
+    inline int GetKeyNameTextA(long, char*, int) { return 0; }
+    inline short VkKeyScanA(char) { return -1; }
+    inline unsigned int MapVirtualKeyW(unsigned int, unsigned int) { return 0; }
+    inline unsigned int MapVirtualKey(unsigned int, unsigned int) { return 0; }
+    inline ULONG_PTR GetMessageExtraInfo() { return 0; }
+    inline int GetDeviceCaps(void*, int) { return 96; }
+    #define LOGPIXELSY 90
+    #define SM_CYCURSOR 13
+    inline int GetSystemMetricsForDpi(int, unsigned int) { return 0; }
+    #define WM_GETDLGCODE 0x87
+
+    // INPUT stub
+    struct INPUT { unsigned long type; struct { unsigned short wVk, wScan; unsigned long dwFlags; unsigned long time; ULONG_PTR dwExtraInfo; } ki; };
+    #define INPUT_KEYBOARD 1
+    #define KEYEVENTF_KEYUP 2
+    inline unsigned int SendInput(unsigned int, INPUT*, int) { return 0; }
+
+
+
+
+    // errno_t
+    using errno_t = int;
     #define FILE_SHARE_READ 1
     #define FILE_SHARE_WRITE 2
     #define FILE_SHARE_DELETE 4
