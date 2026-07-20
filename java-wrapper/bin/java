@@ -1,4 +1,0 @@
-#!/bin/bash
-echo "=== $(date): Minecraft launched via Toolscreen wrapper ===" >> /home/user/toolscreen.log
-export LD_PRELOAD="/home/user/Toolscreen/out/build/linux-test/bin/libtoolscreen.so"
-exec /home/user/.tlauncher/jre8/usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java "$@"
