@@ -391,7 +391,7 @@ void ToolscreenLinuxInit() {
     TS_LOG("[Toolscreen] libtoolscreen.so loaded (constructor)\n");
     // Runtime hook for dlopen injection: patches glXSwapBuffers in-process
     GLXHook::InstallRuntimeHook();
-    SharedInit::InstallExceptionHandlers();
+    // NOTE: do NOT install signal handlers here — JVM uses SIGSEGV internally
 }
 
 // __attribute__((destructor)) runs when the .so is unloaded
