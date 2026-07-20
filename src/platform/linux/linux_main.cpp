@@ -188,6 +188,7 @@ void ImGui_ImplWin32_Init(void*) {}
 void ImGui_ImplWin32_NewFrame() {}
 void ImGui_ImplWin32_Shutdown() {}
 ImGuiKey ImGui_ImplWin32_KeyEventToImGuiKey(WPARAM, LPARAM) { return ImGuiKey_None; }
+int ImGui_ImplWin32_WndProcHandler(void*, unsigned int, uint64_t, int64_t) { return 0; }
 
 // Mode/state (types from gui.h — declared extern, defined in dllmain.cpp)
 ModeTransitionAnimation g_modeTransition;
@@ -262,7 +263,7 @@ void* g_owglSwapBuffersThirdParty = nullptr;
 
 // Additional Windows-only stubs
 bool ClipCursorDirect(const PlatformRect* r) { return X11Cursor::ClipCursor(r), true; }
-bool ClipCursorDirect(const RECT* r) { PlatformRect pr{r->left, r->top, r->right, r->bottom}; return X11Cursor::ClipCursor(&pr), true; }
+BOOL ClipCursorDirect(const RECT* r) { PlatformRect pr{r->left, r->top, r->right, r->bottom}; X11Cursor::ClipCursor(&pr); return TRUE; }
 bool ApplyConfineCursorToGameWindow() { return false; }
 void ApplyDeferredGuiCursorModeAfterClose() {}
 void FinalizeGuiCursorStateAfterClose() {}
@@ -274,6 +275,12 @@ void* owglSwapBuffers = nullptr;
 // Windows WGL third-party hook stubs (not used on Linux)
 int hkwglSwapBuffers(void*) { return 0; }
 int hkwglSwapBuffers_ThirdParty(void*) { return 0; }
+
+// Viewport/mode stubs (defined in dllmain.cpp on Windows)
+#include "common/utils.h"  // ModeViewportInfo
+bool ResolvePresentedGameViewport(ModeViewportInfo& outViewport) { outViewport.valid = false; return false; }
+bool GetLatestGameViewportSize(int& w, int& h) { w = 1920; h = 1080; return true; }
+void InvalidateLatestGameViewportSize() {}
 
 namespace {
 
