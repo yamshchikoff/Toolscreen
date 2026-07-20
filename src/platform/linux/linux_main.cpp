@@ -21,6 +21,7 @@
 #include "features/game_state_source.h"
 
 #include <cstdio>
+#include <cstdarg>
 #include <cstring>
 #include <string>
 #include <thread>
@@ -28,6 +29,16 @@
 #include <dlfcn.h>
 #include <unistd.h>
 #include <sys/syscall.h>
+
+// Log writer — пишет в файл вместо stderr (который Minecraft не сохраняет)
+static FILE* g_logFile = nullptr;
+static void TS_LOG(const char* fmt, ...) {
+    if (!g_logFile) g_logFile = fopen("/home/user/toolscreen.log", "a");
+    if (g_logFile) {
+        va_list va; va_start(va, fmt); vfprintf(g_logFile, fmt, va); va_end(va);
+        fflush(g_logFile);
+    }
+}
 
 // ---- Global state (mirrors Windows dllmain.cpp globals) ----
 // These are the core globals expected by the rest of the codebase.
@@ -290,40 +301,40 @@ std::atomic<bool> g_threadsRunning{false};
 // Initialization steps
 bool InitPlatform() {
     if (!X11Display::Open()) {
-        fprintf(stderr, "[Toolscreen] FATAL: Cannot open X11 display\n");
+        TS_LOG("[Toolscreen] FATAL: Cannot open X11 display\n");
         return false;
     }
-    fprintf(stderr, "[Toolscreen] X11 display opened\n");
+    TS_LOG("[Toolscreen] X11 display opened\n");
     return true;
 }
 
 bool InitGLHook() {
     if (!GLXHook::Initialize()) {
-        fprintf(stderr, "[Toolscreen] FATAL: Cannot initialize GLX hooks\n");
+        TS_LOG("[Toolscreen] FATAL: Cannot initialize GLX hooks\n");
         return false;
     }
-    fprintf(stderr, "[Toolscreen] GLX hooks initialized\n");
+    TS_LOG("[Toolscreen] GLX hooks initialized\n");
     return true;
 }
 
 bool InitLogger() {
     // Initialize basic stderr logging
     // Full log file initialization will be done after config is loaded
-    fprintf(stderr, "[Toolscreen] Logger initialized (stderr)\n");
+    TS_LOG("[Toolscreen] Logger initialized (stderr)\n");
     return true;
 }
 
 bool LoadToolscreenConfig() {
     // TODO: Load config from TOML file
     // For now, use embedded defaults
-    fprintf(stderr, "[Toolscreen] Config loaded (defaults)\n");
+    TS_LOG("[Toolscreen] Config loaded (defaults)\n");
     return true;
 }
 
 void StartThreads() {
     // TODO: Start logic thread, file monitor, image monitor
     // These will be connected in later phases
-    fprintf(stderr, "[Toolscreen] Background threads started\n");
+    TS_LOG("[Toolscreen] Background threads started\n");
     g_threadsRunning.store(true);
 }
 
@@ -347,23 +358,23 @@ static std::once_flag g_lazyInitFlag;
 
 void ToolscreenLazyInit() {
     std::call_once(g_lazyInitFlag, []() {
-        fprintf(stderr, "[Toolscreen] Lazy init triggered\n");
+        TS_LOG("[Toolscreen] Lazy init triggered\n");
 
         XInitThreads();
         SharedInit::InstallExceptionHandlers();
 
         if (!InitPlatform()) {
-            fprintf(stderr, "[Toolscreen] Platform init failed, Toolscreen disabled\n");
+            TS_LOG("[Toolscreen] Platform init failed, Toolscreen disabled\n");
             return;
         }
 
         if (!InitLogger()) {
-            fprintf(stderr, "[Toolscreen] Logger init failed\n");
+            TS_LOG("[Toolscreen] Logger init failed\n");
             return;
         }
 
         if (!InitGLHook()) {
-            fprintf(stderr, "[Toolscreen] GL hook init failed\n");
+            TS_LOG("[Toolscreen] GL hook init failed\n");
             return;
         }
 
@@ -371,30 +382,27 @@ void ToolscreenLazyInit() {
         LoadToolscreenConfig();
         StartThreads();
         g_initialized.store(true);
-        fprintf(stderr, "[Toolscreen] Initialization complete\n");
+        TS_LOG("[Toolscreen] Initialization complete\n");
     });
 }
 
-// __attribute__((constructor)) runs when the .so is loaded (before main())
-// This is the Linux equivalent of DllMain(DLL_PROCESS_ATTACH)
-// Note: we do NOT open X11 or GL here — that happens lazily on first frame.
 extern "C" __attribute__((constructor))
 void ToolscreenLinuxInit() {
-    fprintf(stderr, "[Toolscreen] libtoolscreen.so loaded (constructor)\n");
+    TS_LOG("[Toolscreen] libtoolscreen.so loaded (constructor)\n");
 }
 
 // __attribute__((destructor)) runs when the .so is unloaded
 // This is the Linux equivalent of DllMain(DLL_PROCESS_DETACH)
 extern "C" __attribute__((destructor))
 void ToolscreenLinuxShutdown() {
-    fprintf(stderr, "[Toolscreen] libtoolscreen.so unloading (destructor)\n");
+    TS_LOG("[Toolscreen] libtoolscreen.so unloading (destructor)\n");
 
     StopThreads();
     GLXHook::Shutdown();
     X11Cursor::Shutdown();
     X11Display::Close();
 
-    fprintf(stderr, "[Toolscreen] Shutdown complete\n");
+    TS_LOG("[Toolscreen] Shutdown complete\n");
 }
 
 // ---- Platform service implementations ----

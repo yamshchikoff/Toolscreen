@@ -544,6 +544,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     Xcursor
     Xrandr
     Xinerama
+    Xtst
     ${CMAKE_DL_LIBS}
     pthread
     z
