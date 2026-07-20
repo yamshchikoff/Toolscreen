@@ -840,8 +840,7 @@ namespace Vk {
     inline void* CreateWaitableTimerExW(void*, const wchar_t*, unsigned long, unsigned long) { return reinterpret_cast<void*>(1); }
     inline void* CreateWaitableTimerW(void*, const wchar_t*, int, const wchar_t*) { return reinterpret_cast<void*>(1); }
     inline void* CreateWaitableTimerW(const wchar_t*, int, const wchar_t*) { return reinterpret_cast<void*>(1); }
-    using LPTHREAD_START_ROUTINE = DWORD (*)(void*);
-    inline HANDLE CreateThread(void*, size_t, LPTHREAD_START_ROUTINE, void*, unsigned long, unsigned long*) { return nullptr; }
+    inline HANDLE CreateThread(void*, size_t, void* (*)(void*), void*, unsigned long, unsigned long*) { return nullptr; }
     inline uintptr_t SetTimer(void*, uintptr_t, unsigned int, void*) { return 1; }
     using HKL = void*;
     inline unsigned long GetMessageTime() { return 0; }
@@ -858,8 +857,7 @@ namespace Vk {
     inline LRESULT CallNextHookEx(HHOOK, int, WPARAM, LPARAM) { return 0; }
     #define WH_KEYBOARD_LL 13
     #define WH_MOUSE_LL 14
-    using HOOKPROC = LRESULT (*)(int, WPARAM, LPARAM);
-    inline HHOOK SetWindowsHookExW(int, HOOKPROC, HINSTANCE, unsigned long) { return nullptr; }
+    inline HHOOK SetWindowsHookExW(int, void*, HINSTANCE, unsigned long) { return nullptr; }
     #define KEYEVENTF_SCANCODE 8
     #define KEYEVENTF_EXTENDEDKEY 1
     #define MK_CONTROL 8
