@@ -13,10 +13,17 @@ typedef int Status;
 #include <X11/XKBlib.h>
 #include <cstdio>
 #include <cstring>
+#include <cstdarg>
 #include <ctime>
 #include <atomic>
 
 namespace {
+
+// Log to file (stderr is discarded by Minecraft's JVM)
+static void X11_LOG(const char* fmt, ...) {
+    FILE* f = fopen("/home/user/toolscreen.log", "a");
+    if (f) { va_list va; va_start(va, fmt); vfprintf(f, fmt, va); va_end(va); fclose(f); }
+}
 
 Display* g_display = nullptr;
 Window g_window = 0;
@@ -162,7 +169,7 @@ bool ImGui_ImplX11_Init(Display* display, Window window) {
     io.BackendPlatformName = "imgui_impl_x11";
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
-    fprintf(stderr, "[Toolscreen] ImGui X11 backend initialized (API v1.92+)\n");
+    X11_LOG("[Toolscreen] ImGui X11 backend initialized (API v1.92+)\n");
     return true;
 }
 

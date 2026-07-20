@@ -11,6 +11,7 @@
 #include <X11/keysym.h>
 #include <cstdio>
 #include <cstring>
+#include <cstdarg>
 #include <mutex>
 #include <atomic>
 #include <unordered_map>
@@ -19,6 +20,12 @@
 namespace X11Input {
 
 namespace {
+
+// Log to file (stderr is discarded by Minecraft's JVM)
+static void X11_LOG(const char* fmt, ...) {
+    FILE* f = fopen("/home/user/toolscreen.log", "a");
+    if (f) { va_list va; va_start(va, fmt); vfprintf(f, fmt, va); va_end(va); fclose(f); }
+}
 
 EventCallback g_callback;
 std::mutex g_callbackMutex;
@@ -40,7 +47,7 @@ bool EnsureXTestAvailable() {
         bool available = XTestQueryExtension(dpy, &evBase, &errBase, &major, &minor);
         g_xtestAvailable.store(available, std::memory_order_release);
         if (!available) {
-            fprintf(stderr, "[Toolscreen] XTEST unavailable — synthetic input disabled\n");
+            X11_LOG("[Toolscreen] XTEST unavailable — synthetic input disabled\n");
         }
     });
     g_xtestChecked.store(true, std::memory_order_release);
@@ -91,7 +98,7 @@ bool Install(Window gameWindow) {
 
     X11Display::Flush();
     g_installed.store(true);
-    fprintf(stderr, "[Toolscreen] X11 input installed on window 0x%lx\n", gameWindow);
+    X11_LOG("[Toolscreen] X11 input installed on window 0x%lx\n", gameWindow);
     return true;
 }
 
@@ -242,7 +249,7 @@ void SendKeyDown(uint32_t vkCode) {
 
     unsigned int keycode = XKeysymToKeycode(dpy, ks);
     if (keycode == 0) {
-        fprintf(stderr, "[Toolscreen] SendKeyDown: no keycode for VK 0x%X\n", vkCode);
+        X11_LOG("[Toolscreen] SendKeyDown: no keycode for VK 0x%X\n", vkCode);
         return;
     }
 
@@ -261,7 +268,7 @@ void SendKeyUp(uint32_t vkCode) {
 
     unsigned int keycode = XKeysymToKeycode(dpy, ks);
     if (keycode == 0) {
-        fprintf(stderr, "[Toolscreen] SendKeyUp: no keycode for VK 0x%X\n", vkCode);
+        X11_LOG("[Toolscreen] SendKeyUp: no keycode for VK 0x%X\n", vkCode);
         return;
     }
 
