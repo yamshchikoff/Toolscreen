@@ -25,20 +25,22 @@ std::atomic<bool> g_installed{false};
 Window g_gameWindow = 0;
 
 // XTEST availability (checked once, cached for all SendKey/SendChar calls)
-static bool g_xtestChecked = false;
-static bool g_xtestAvailable = false;
+std::atomic<bool> g_xtestChecked{false};
+std::atomic<bool> g_xtestAvailable{false};
 
 bool EnsureXTestAvailable() {
-    if (g_xtestChecked) return g_xtestAvailable;
-    g_xtestChecked = true;
+    if (g_xtestChecked.load(std::memory_order_acquire))
+        return g_xtestAvailable.load(std::memory_order_acquire);
     Display* dpy = X11Display::Get();
     if (!dpy) return false;
     int major, minor;
-    g_xtestAvailable = XTestQueryExtension(dpy, &major, &minor, nullptr, nullptr, nullptr);
-    if (!g_xtestAvailable) {
+    bool available = XTestQueryExtension(dpy, &major, &minor, nullptr, nullptr, nullptr);
+    g_xtestAvailable.store(available, std::memory_order_release);
+    g_xtestChecked.store(true, std::memory_order_release);
+    if (!available) {
         fprintf(stderr, "[Toolscreen] XTEST unavailable — synthetic input disabled\n");
     }
-    return g_xtestAvailable;
+    return available;
 }
 
 // Track key state for modifier queries

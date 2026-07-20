@@ -345,7 +345,17 @@ bool GetMonitorGeometry(int index, PlatformRect& outRect, bool& outIsPrimary) {
                     outRect.top    = static_cast<s32>(crtc->y);
                     outRect.right  = static_cast<s32>(crtc->x + crtc->width);
                     outRect.bottom = static_cast<s32>(crtc->y + crtc->height);
-                    outIsPrimary = (index == 0);
+
+                    // Determine if this is the primary output
+                    RROutput primaryOut = XRRGetOutputPrimary(g_display, g_root);
+                    outIsPrimary = false;
+                    for (int o = 0; o < crtc->noutput; ++o) {
+                        if (crtc->outputs[o] == primaryOut) {
+                            outIsPrimary = true;
+                            break;
+                        }
+                    }
+
                     XRRFreeCrtcInfo(crtc);
                     XRRFreeScreenResources(res);
                     return true;

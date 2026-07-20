@@ -154,7 +154,18 @@ void* LoadCursorFromRGBA(const uint8_t* rgba, int width, int height, int hotX, i
                                                 reinterpret_cast<char*>(maskBits.data()),
                                                 width, height, 1, 0, 1);
     if (!mask) {
+        // XCreatePixmapFromBitmapData failed (extremely rare — X server OOM).
+        // Fall back to DrawPoint loop so the mask is correct rather than empty.
         mask = XCreatePixmap(dpy, X11Display::GetRoot(), width, height, 1);
+        GC maskGc = XCreateGC(dpy, mask, 0, nullptr);
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                size_t srcIdx = (static_cast<size_t>(y) * width + x) * 4;
+                XSetForeground(dpy, maskGc, rgba[srcIdx + 3] > 128 ? 1 : 0);
+                XDrawPoint(dpy, mask, maskGc, x, y);
+            }
+        }
+        XFreeGC(dpy, maskGc);
     }
 
     XColor fg, bg;

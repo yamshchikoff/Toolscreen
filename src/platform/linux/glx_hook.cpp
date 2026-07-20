@@ -307,7 +307,10 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     PROFILE_SCOPE("glXSwapBuffers");
 
     // Lazy GLEW initialization on first call (requires an active GL context,
-    // so we must do it here — not in Initialize())
+    // so we must do it here — not in Initialize()).
+    // TODO: If the game recreates its GL context (e.g. fullscreen ↔ windowed
+    // toggle), g_glewReady stays true but GLEW function pointers point to the
+    // old (destroyed) context. Detect context change and reset g_glewReady.
     if (!g_glewReady.load(std::memory_order_acquire)) {
         GLenum glewErr = glewInit();
         if (glewErr == GLEW_OK) {
