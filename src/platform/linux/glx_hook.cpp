@@ -455,41 +455,15 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     }
 
     // ---- Render GUI (context already created above) ----
-    if (g_imguiInitialized && g_imguiCtx && X11Display::GetGameWindow() != 0) {
-        ImGui::SetCurrentContext(g_imguiCtx);
-
-        // Save GL state before ImGui rendering
-        glPushAttrib(GL_ALL_ATTRIB_BITS);
-        glPushClientAttrib(GL_CLIENT_ALL_ATTRIB_BITS);
-
-        // Ensure DisplaySize is set
-        ImGuiIO& io = ImGui::GetIO();
-        if (io.DisplaySize.x <= 0.0f) {
-            io.DisplaySize = ImVec2(1920.0f, 1080.0f);
-            io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
-        }
-
-        X11Input::PollEvents();
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplX11_NewFrame();
-        ImGui::NewFrame();
-
-        static bool showDemo = true;
-        ImGui::ShowDemoWindow(&showDemo);
-
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
-        // Restore GL state
-        glPopClientAttrib();
-        glPopAttrib();
-    }
-
     // Call the original glXSwapBuffers to present the frame
     inHkSwap = false;
     auto* realSwap = g_realSwapBuffers.load(std::memory_order_acquire);
     if (realSwap) {
         realSwap(dpy, drawable);
+    } else {
+        // Fallback: call glXSwapBuffers via dlsym
+        static auto fallbackSwap = (void(*)(Display*,GLXDrawable))dlsym(RTLD_NEXT, "glXSwapBuffers");
+        if (fallbackSwap && fallbackSwap != (void*)hk_glXSwapBuffers) fallbackSwap(dpy, drawable);
     }
     inHkSwap = true;
 }
