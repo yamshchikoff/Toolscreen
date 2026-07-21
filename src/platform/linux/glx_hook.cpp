@@ -568,6 +568,10 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
         {
             gloverlay::ScopedState glState;
 
+            // Force rendering to the back buffer — Sodium may have left
+            // a custom FBO bound, which would swallow our ImGui output.
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+
             // Sodium sets GL_UNPACK_ROW_LENGTH → ImGui font upload reads
             // out-of-bounds → SIGSEGV in NVIDIA driver. Reset before ImGui.
             glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
