@@ -564,36 +564,10 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             return;
         }
 
-        if (shouldLog) HOOK_LOG("[Toolscreen] Frame %d: rendering ImGui\n", g_frameCounter);
-        {
-            gloverlay::ScopedState glState;
-
-            // Force rendering to the back buffer — Sodium may have left
-            // a custom FBO bound, which would swallow our ImGui output.
-            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-
-            // Sodium sets GL_UNPACK_ROW_LENGTH → ImGui font upload reads
-            // out-of-bounds → SIGSEGV in NVIDIA driver. Reset before ImGui.
-            glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-            glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
-            glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
-            glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-
-            ImGui::SetCurrentContext(g_imguiCtx);
-            ImGuiIO& io = ImGui::GetIO();
-            if (io.DisplaySize.x <= 0.0f) {
-                io.DisplaySize = ImVec2(1920.0f, 1080.0f);
-                io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
-            }
-            X11Input::PollEvents();
-            // Test: red rectangle via glClear + scissor (works in any GL version)
-            glEnable(GL_SCISSOR_TEST);
-            glScissor(50, 50, 200, 100);
-            glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
-            glClear(GL_COLOR_BUFFER_BIT);
-            glDisable(GL_SCISSOR_TEST);
+        // ImGui rendering will be re-enabled after verifying swap stability
+        if (shouldLog && g_frameCounter == 1) {
+            HOOK_LOG("[Toolscreen] Frame 1: swap-only mode, no GL rendering\n");
         }
-        if (shouldLog) HOOK_LOG("[Toolscreen] Frame %d: GL state restored\n", g_frameCounter);
     }
 
     // Call the real SwapBuffers via saved dispatch table pointer.
