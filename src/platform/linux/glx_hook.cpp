@@ -564,9 +564,10 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             return;
         }
 
-        // ImGui rendering will be re-enabled after verifying swap stability
-        if (shouldLog && g_frameCounter == 1) {
-            HOOK_LOG("[Toolscreen] Frame 1: swap-only mode, no GL rendering\n");
+        if (g_frameCounter == 1) {
+            HOOK_LOG("[Toolscreen] Frame 1: testing single GL call\n");
+            glUseProgram(0);
+            HOOK_LOG("[Toolscreen] Frame 1: glUseProgram OK\n");
         }
     }
 
