@@ -601,6 +601,23 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             glBindVertexArray(0);
             glUseProgram(0);
             glDisable(GL_BLEND);
+
+            // Now try ImGui on top
+            ImGui::SetCurrentContext(g_imguiCtx);
+            ImGuiIO& io = ImGui::GetIO();
+            if (io.DisplaySize.x <= 0.0f) {
+                io.DisplaySize = ImVec2(1920.0f, 1080.0f);
+                io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
+            }
+            X11Input::PollEvents();
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplX11_NewFrame();
+            ImGui::NewFrame();
+            ImGui::Begin("Toolscreen");
+            ImGui::Text("Injector OK");
+            ImGui::End();
+            ImGui::Render();
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         }
     }
 
