@@ -93,7 +93,6 @@ struct HookEntry {
 
 std::mutex g_hookMutex;
 std::unordered_map<void*, HookEntry> g_hooks;
-HookEntry* g_activeHook = nullptr;  // The glXSwapBuffers hook entry
 std::atomic<bool> g_initialized{false};
 std::atomic<bool> g_hooksEnabled{false};
 std::atomic<bool> g_glewReady{false};
@@ -480,17 +479,8 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     }
     inHkSwap = true;
 
-    // Step 1: Lazy init (X11, config — NO GLEW, NO ImGui)
+    // Lazy init (X11, config) — once
     ToolscreenLazyInit();
-
-    // Step 2: Call the real implementation via saved dispatch pointer.
-    // g_realSwapBuffers was saved from the dispatch table before patching.
-    inHkSwap = false;
-    auto* realImpl = g_realSwapBuffers.load(std::memory_order_acquire);
-    if (realImpl) {
-        realImpl(dpy, drawable);
-    }
-    inHkSwap = false;
 
     // Lazy GLEW initialization on first call (requires an active GL context)
     static std::atomic<GLXContext> s_glewContext{nullptr};
