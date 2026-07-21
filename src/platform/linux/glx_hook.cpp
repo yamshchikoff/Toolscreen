@@ -574,15 +574,42 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             return;
         }
 
-        // ImGui rendering temporarily disabled — testing trampoline stability
-        if (shouldLog && g_frameCounter == 1) {
-            HOOK_LOG("[Toolscreen] Frame %d: hook+trampoline only, ImGui skipped\n", g_frameCounter);
+        if (shouldLog) HOOK_LOG("[Toolscreen] Frame %d: rendering ImGui\n", g_frameCounter);
+        {
+            gloverlay::ScopedState glState;
+
+            // Sodium sets GL_UNPACK_ROW_LENGTH → ImGui font upload reads
+            // out-of-bounds → SIGSEGV in NVIDIA driver. Reset before ImGui.
+            glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+            glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
+            glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+
+            ImGui::SetCurrentContext(g_imguiCtx);
+            ImGuiIO& io = ImGui::GetIO();
+            if (io.DisplaySize.x <= 0.0f) {
+                io.DisplaySize = ImVec2(1920.0f, 1080.0f);
+                io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
+            }
+            X11Input::PollEvents();
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplX11_NewFrame();
+            ImGui::NewFrame();
+            ImGui::Begin("Toolscreen");
+            ImGui::Text("Injector OK");
+            ImGui::End();
+            ImGui::Render();
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         }
+        if (shouldLog) HOOK_LOG("[Toolscreen] Frame %d: GL state restored\n", g_frameCounter);
     }
 
-    // EXPERIMENT: don't call real glXSwapBuffers at all.
-    // This tests whether mprotect in the guard path is the crash source.
-    // Game will appear frozen, but if it doesn't crash → mprotect is the problem.
+    // Call the real SwapBuffers via saved dispatch table pointer.
+    inHkSwap = false;
+    auto* realImpl = g_realSwapBuffers.load(std::memory_order_acquire);
+    if (realImpl) {
+        realImpl(dpy, drawable);
+    }
     inHkSwap = false;
 }
 
