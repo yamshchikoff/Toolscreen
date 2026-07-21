@@ -505,8 +505,10 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     }
     inHkSwap = true;
 
-    // Deferred initialization — avoids conflicts with Java classloaders
-    ToolscreenLazyInit();
+    // EXPERIMENT: absolutely nothing — just return.
+    // If this crashes → the jump/bridge mechanism itself is broken.
+    inHkSwap = false;
+    return;
 
     // Lazy GLEW initialization on first call (requires an active GL context)
     static std::atomic<GLXContext> s_glewContext{nullptr};
