@@ -251,14 +251,33 @@ bool RouteX11EventToImGui(const X11Input::InputEvent& ev) {
     using ET = X11Input::EventType;
     switch (ev.type) {
     case ET::KeyDown: {
+        // Отладочный режим: логируем ВСЕ нажатия клавиш
+        // с фильтром повторов (X11 авто-повтор).
+        static uint32_t s_lastVk = 0xFFFFFFFF;
+        static uint32_t s_lastSc = 0xFFFFFFFF;
+        if (ev.vkCode != s_lastVk || ev.scanCode != s_lastSc) {
+            s_lastVk = ev.vkCode;
+            s_lastSc = ev.scanCode;
+            std::string msg = FormatKeyEvent(ev.vkCode, ev.scanCode);
+            HOTKEY_LOG("%s\n", msg.c_str());
+        }
         if (IsHotkeyVkCode(ev.vkCode)) {
-            HOTKEY_LOG("[Toolscreen] HOTKEY: vk=0x%X scanCode=%u\n",
+            HOTKEY_LOG("[Toolscreen] HOTKEY MATCH: vk=0x%X scanCode=%u\n",
                        ev.vkCode, ev.scanCode);
         }
         return ImGui_ImplX11_HandleKeyEvent(ev.scanCode, true, 0);
     }
-    case ET::KeyUp:
+    case ET::KeyUp: {
+        static uint32_t s_lastUpVk = 0xFFFFFFFF;
+        static uint32_t s_lastUpSc = 0xFFFFFFFF;
+        if (ev.vkCode != s_lastUpVk || ev.scanCode != s_lastUpSc) {
+            s_lastUpVk = ev.vkCode;
+            s_lastUpSc = ev.scanCode;
+            HOTKEY_LOG("[Toolscreen] KEY UP: vk=0x%X scanCode=%u\n",
+                       ev.vkCode, ev.scanCode);
+        }
         return ImGui_ImplX11_HandleKeyEvent(ev.scanCode, false, 0);
+    }
     case ET::MouseDown: {
         // Map Vk mouse codes to ImGui button indices (0=left, 1=right, 2=middle)
         int btn = -1;

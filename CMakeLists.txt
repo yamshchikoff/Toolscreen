@@ -1578,5 +1578,35 @@ if(UNIX AND NOT APPLE)
             COMMAND $<TARGET_FILE:toolscreen_hotkey_detection_tests> --run ${test_case}
         )
     endforeach()
+
+    add_executable(toolscreen_key_debug_tests
+        tests/key_debug_tests.cpp
+        ${TOOLSCREEN_PLATFORM_DIR}/hotkey_detect.cpp
+    )
+
+    target_include_directories(toolscreen_key_debug_tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+
+    target_compile_definitions(toolscreen_key_debug_tests PRIVATE
+        NOMINMAX
+    )
+
+    toolscreen_configure_target_outputs(toolscreen_key_debug_tests)
+    toolscreen_enable_release_symbols(toolscreen_key_debug_tests)
+
+    set(TOOLSCREEN_KEY_DEBUG_TEST_CASES
+        z_key_format
+        j_key_format
+        a_key_format
+        alt_key_format
+    )
+
+    foreach(test_case IN LISTS TOOLSCREEN_KEY_DEBUG_TEST_CASES)
+        add_test(
+            NAME toolscreen_key_debug_${test_case}
+            COMMAND $<TARGET_FILE:toolscreen_key_debug_tests> --run ${test_case}
+        )
+    endforeach()
 endif()
 
