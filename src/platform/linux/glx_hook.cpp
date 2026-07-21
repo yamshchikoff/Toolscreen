@@ -583,7 +583,7 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             ImGui::Text("Injector OK");
             ImGui::End();
             ImGui::Render();
-            // RenderDrawData called separately
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         }
     }
 
