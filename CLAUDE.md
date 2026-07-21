@@ -22,3 +22,20 @@
 - **Хук должен работать на любой дистанции** — использовать двухшаговый подход: bridge-страница рядом с target (<2GB) для 5-байтового атомарного jmp rel32, в bridge — 14-байтовый absolute jump без ограничения дистанции.
 - **SIGSEGV в libnvidia-glcore.so** при вызове ImGui_ImplOpenGL3_RenderDrawData — даже с сохранением/восстановлением GL-стейта. Без RenderDrawData игра стабильна.
 - **Sodium** (оптимизатор рендера Minecraft) агрессивно кеширует GL-стейт и чувствителен к посторонним GL-вызовам.
+
+## Платформа — проверка регресса рендера
+
+Минимальный тест что GL-рендер работает после инжекта (красный квадрат в центре экрана):
+
+1. Создать шейдер (vertex + fragment), VAO, VBO с 6 вершинами (2 треугольника)
+2. Каждый кадр: `glBindFramebuffer(DRAW_FRAMEBUFFER, 0)`, `glBindBuffer(PIXEL_UNPACK_BUFFER, 0)`, сбросить `GL_UNPACK_*` в дефолт
+3. `glEnable(GL_BLEND)`, `glBlendFunc(SRC_ALPHA, ONE_MINUS_SRC_ALPHA)`
+4. `glUseProgram`, `glBindVertexArray`, `glDrawArrays(GL_TRIANGLES, 0, 6)`
+5. После отрисовки: unbind VAO, program, disable BLEND
+
+Ключевые требования для работы GL на фоне Sodium:
+- **`glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0)`** — Sodium оставляет кастомный FBO
+- **`glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0)`** — Sodium оставляет PBO, иначе `glTexImage2D` падает (интерпретирует pixels как offset)
+- **`glPixelStorei(GL_UNPACK_ROW_LENGTH, 0)`** — Sodium выставляет свои значения
+- **`glPixelStorei(GL_UNPACK_ALIGNMENT, 4)`** — дефолт
+- Без этих сбросов — либо краш (SIGSEGV в libnvidia-glcore.so), либо невидимый рендер
