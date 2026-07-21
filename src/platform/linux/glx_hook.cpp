@@ -479,7 +479,9 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
         s_glewContext.store(currentCtx, std::memory_order_release);
     }
     if (!g_glewReady.load(std::memory_order_acquire)) {
+        TRACE_CALL("[Toolscreen] glewInit start\n");
         GLenum glewErr = glewInit();
+        TRACE_CALL("[Toolscreen] glewInit done\n");
         if (glewErr == GLEW_OK) {
             g_glewReady.store(true, std::memory_order_release);
             s_glewContext.store(glXGetCurrentContext(), std::memory_order_release);
@@ -496,16 +498,22 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     static std::atomic<bool> g_imguiInitialized{false};
     static ImGuiContext* g_imguiCtx = nullptr;
     if (!g_imguiInitialized.load(std::memory_order_acquire) && g_glewReady.load()) {
+        TRACE_CALL("[Toolscreen] ImGui init: entering call_once\n");
         std::call_once(g_imguiInitFlag, [&]() {
+            TRACE_CALL("[Toolscreen] ImGui init: ScopedState\n");
             gloverlay::ScopedState initState;
+            TRACE_CALL("[Toolscreen] ImGui init: CreateContext\n");
             IMGUI_CHECKVERSION();
             g_imguiCtx = ImGui::CreateContext();
             ImGui::SetCurrentContext(g_imguiCtx);
+            TRACE_CALL("[Toolscreen] ImGui init: ImplOpenGL3_Init\n");
             ImGui_ImplOpenGL3_Init("#version 330");
+            TRACE_CALL("[Toolscreen] ImGui init: config\n");
             ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
             ImGui::GetStyle().FrameRounding = 3.0f;
             g_imguiInitialized.store(true, std::memory_order_release);
             HOOK_LOG("[Toolscreen] ImGui initialized (X11/OpenGL3)\n");
+            TRACE_CALL("[Toolscreen] ImGui init: done\n");
         });
     }
 
@@ -559,10 +567,6 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             ImGui::Text("Injector OK");
             ImGui::End();
             ImGui::Render();
-
-            // Flush all pending GL commands from Sodium before touching GL
-            TRACE_CALL("[Toolscreen] glFinish\n");
-            glFinish();
 
             TRACE_CALL("[Toolscreen] RenderDrawData\n");
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
