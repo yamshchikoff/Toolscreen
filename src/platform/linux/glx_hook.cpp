@@ -602,20 +602,13 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             glUseProgram(0);
             glDisable(GL_BLEND);
 
-            // Now try ImGui on top
+            // Minimal ImGui: draw rect via drawlist (no windows, no fonts)
             ImGui::SetCurrentContext(g_imguiCtx);
-            ImGuiIO& io = ImGui::GetIO();
-            if (io.DisplaySize.x <= 0.0f) {
-                io.DisplaySize = ImVec2(1920.0f, 1080.0f);
-                io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
-            }
             X11Input::PollEvents();
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplX11_NewFrame();
             ImGui::NewFrame();
-            ImGui::Begin("Toolscreen");
-            ImGui::Text("Injector OK");
-            ImGui::End();
+            ImGui::GetForegroundDrawList()->AddRect(ImVec2(100,100), ImVec2(300,200), IM_COL32(0,255,0,255));
             ImGui::Render();
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         }
