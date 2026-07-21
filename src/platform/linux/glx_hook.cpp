@@ -249,15 +249,18 @@ std::atomic<bool> g_inputWired{false};
 
 bool RouteX11EventToImGui(const X11Input::InputEvent& ev) {
     using ET = X11Input::EventType;
+
+    // Фильтр повторов на уровне функции (общие для KeyDown/KeyUp)
+    static uint32_t s_lastDownVk = 0xFFFFFFFF;
+    static uint32_t s_lastDownSc = 0xFFFFFFFF;
+    static uint32_t s_lastUpVk   = 0xFFFFFFFF;
+    static uint32_t s_lastUpSc   = 0xFFFFFFFF;
+
     switch (ev.type) {
     case ET::KeyDown: {
-        // Отладочный режим: логируем ВСЕ нажатия клавиш
-        // с фильтром повторов (X11 авто-повтор).
-        static uint32_t s_lastVk = 0xFFFFFFFF;
-        static uint32_t s_lastSc = 0xFFFFFFFF;
-        if (ev.vkCode != s_lastVk || ev.scanCode != s_lastSc) {
-            s_lastVk = ev.vkCode;
-            s_lastSc = ev.scanCode;
+        if (ev.vkCode != s_lastDownVk || ev.scanCode != s_lastDownSc) {
+            s_lastDownVk = ev.vkCode;
+            s_lastDownSc = ev.scanCode;
             std::string msg = FormatKeyEvent(ev.vkCode, ev.scanCode);
             HOTKEY_LOG("%s\n", msg.c_str());
         }
@@ -268,14 +271,16 @@ bool RouteX11EventToImGui(const X11Input::InputEvent& ev) {
         return ImGui_ImplX11_HandleKeyEvent(ev.scanCode, true, 0);
     }
     case ET::KeyUp: {
-        static uint32_t s_lastUpVk = 0xFFFFFFFF;
-        static uint32_t s_lastUpSc = 0xFFFFFFFF;
         if (ev.vkCode != s_lastUpVk || ev.scanCode != s_lastUpSc) {
             s_lastUpVk = ev.vkCode;
             s_lastUpSc = ev.scanCode;
             HOTKEY_LOG("[Toolscreen] KEY UP: vk=0x%X scanCode=%u\n",
                        ev.vkCode, ev.scanCode);
         }
+        // Сбрасываем фильтр KeyDown при отпускании — чтобы повторное
+        // нажатие той же клавиши снова логировалось.
+        s_lastDownVk = 0xFFFFFFFF;
+        s_lastDownSc = 0xFFFFFFFF;
         return ImGui_ImplX11_HandleKeyEvent(ev.scanCode, false, 0);
     }
     case ET::MouseDown: {
