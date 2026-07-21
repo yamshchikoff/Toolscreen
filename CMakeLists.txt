@@ -77,6 +77,7 @@ else()
         ${TOOLSCREEN_PLATFORM_DIR}/x11_window.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/glx_hook.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/hotkey_detect.cpp
+        ${TOOLSCREEN_PLATFORM_DIR}/x11_event_filter.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/x11_input.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/x11_capture.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/x11_cursor.cpp
@@ -1606,6 +1607,37 @@ if(UNIX AND NOT APPLE)
         add_test(
             NAME toolscreen_key_debug_${test_case}
             COMMAND $<TARGET_FILE:toolscreen_key_debug_tests> --run ${test_case}
+        )
+    endforeach()
+
+    add_executable(toolscreen_x11_event_filter_tests
+        tests/x11_event_filter_tests.cpp
+        ${TOOLSCREEN_PLATFORM_DIR}/x11_event_filter.cpp
+    )
+
+    target_include_directories(toolscreen_x11_event_filter_tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${X11_X11_INCLUDE_PATH}
+    )
+
+    target_compile_definitions(toolscreen_x11_event_filter_tests PRIVATE
+        NOMINMAX
+    )
+
+    toolscreen_configure_target_outputs(toolscreen_x11_event_filter_tests)
+    toolscreen_enable_release_symbols(toolscreen_x11_event_filter_tests)
+
+    set(TOOLSCREEN_X11_EVENT_FILTER_TEST_CASES
+        keypress_is_key_event
+        keyrelease_is_key_event
+        motion_not_key_event
+        button_not_key_event
+    )
+
+    foreach(test_case IN LISTS TOOLSCREEN_X11_EVENT_FILTER_TEST_CASES)
+        add_test(
+            NAME toolscreen_x11_event_filter_${test_case}
+            COMMAND $<TARGET_FILE:toolscreen_x11_event_filter_tests> --run ${test_case}
         )
     endforeach()
 endif()

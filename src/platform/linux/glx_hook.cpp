@@ -11,6 +11,7 @@
 #include "x11_display.h"
 #include "platform/linux/x11_input.h"
 #include "platform/linux/hotkey_detect.h"
+#include "platform/linux/x11_event_filter.h"
 #include "gui/imgui_impl_x11.h"
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
@@ -311,6 +312,24 @@ bool RouteX11EventToImGui(const X11Input::InputEvent& ev) {
 
 } // namespace
 
+// ---- Потокобезопасная очередь клавиатурных событий ----
+// XNextEvent interposer кладёт события сюда (поток LWJGL),
+// hk_glXSwapBuffers выгребает (рендер-поток).
+static std::mutex g_pendingKeysMutex;
+static std::vector<XEvent> g_pendingKeyEvents;
+
+static void EnqueueKeyEvent(const XEvent& ev) {
+    std::lock_guard<std::mutex> lock(g_pendingKeysMutex);
+    g_pendingKeyEvents.push_back(ev);
+}
+
+static std::vector<XEvent> DequeueKeyEvents() {
+    std::lock_guard<std::mutex> lock(g_pendingKeysMutex);
+    std::vector<XEvent> result;
+    result.swap(g_pendingKeyEvents);
+    return result;
+}
+
 // Utility log functions (available to all functions in GLXHook namespace)
 static void HOOK_LOG(const char* fmt, ...) {
     FILE* f = fopen("/home/user/toolscreen.log", "a");
@@ -496,6 +515,32 @@ void glBlitFramebuffer(GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1,
     hk_glBlitFramebuffer(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
 }
 
+// ---- XNextEvent interposer ----
+// Перехватывает клавиатурные события ДО игры (PUSH-модель, аналог WndProc).
+// Кладёт KeyPress/KeyRelease в потокобезопасную очередь для обработки в swap.
+static int (*real_XNextEvent)(Display*, XEvent*) = nullptr;
+static std::once_flag g_xnextEventOnceFlag;
+
+int XNextEvent(Display* display, XEvent* event_return) {
+    std::call_once(g_xnextEventOnceFlag, []() {
+        real_XNextEvent = reinterpret_cast<int (*)(Display*, XEvent*)>(
+            dlsym(RTLD_NEXT, "XNextEvent"));
+        if (!real_XNextEvent) {
+            HOOK_LOG("[Toolscreen] FATAL: dlsym(XNextEvent) failed\n");
+        }
+    });
+
+    if (!real_XNextEvent) return -1;
+
+    int result = real_XNextEvent(display, event_return);
+
+    if (result == 0 && event_return && IsKeyEvent(*event_return)) {
+        EnqueueKeyEvent(*event_return);
+    }
+
+    return result;
+}
+
 } // extern "C"
 #pragma GCC visibility pop
 
@@ -615,6 +660,20 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
                 io.DisplaySize = ImVec2(1920.0f, 1080.0f);
                 io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
             }
+            // Выгребаем клавиатурные события из XNextEvent-хука
+            {
+                auto keyEvents = DequeueKeyEvents();
+                for (const auto& ev : keyEvents) {
+                    if (ev.type == KeyPress) {
+                        HOTKEY_LOG("[Toolscreen] XEVENT: KeyPress keycode=%u\n",
+                                   ev.xkey.keycode);
+                    } else if (ev.type == KeyRelease) {
+                        HOTKEY_LOG("[Toolscreen] XEVENT: KeyRelease keycode=%u\n",
+                                   ev.xkey.keycode);
+                    }
+                }
+            }
+
             X11Input::PollEvents();
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplX11_NewFrame();
