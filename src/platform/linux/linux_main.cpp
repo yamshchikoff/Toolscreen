@@ -30,13 +30,14 @@
 #include <unistd.h>
 #include <sys/syscall.h>
 
-// Log writer — пишет в файл вместо stderr (который Minecraft не сохраняет)
-static FILE* g_logFile = nullptr;
+// Log writer — пишет в файл вместо stderr (который Minecraft не сохраняет).
+// Открывает/закрывает файл на каждый вызов (как HOOK_LOG в glx_hook.cpp).
+// Удержание FILE* открытым мешает другим логерам в том же процессе.
 static void TS_LOG(const char* fmt, ...) {
-    if (!g_logFile) g_logFile = fopen("/home/user/toolscreen.log", "a");
-    if (g_logFile) {
-        va_list va; va_start(va, fmt); vfprintf(g_logFile, fmt, va); va_end(va);
-        fflush(g_logFile);
+    FILE* f = fopen("/home/user/toolscreen.log", "a");
+    if (f) {
+        va_list va; va_start(va, fmt); vfprintf(f, fmt, va); va_end(va);
+        fclose(f);
     }
 }
 

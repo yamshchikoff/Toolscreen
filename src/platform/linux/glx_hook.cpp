@@ -444,6 +444,11 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     static ImGuiContext* g_imguiCtx = nullptr;
     if (!g_imguiInitialized.load(std::memory_order_acquire) && g_glewReady.load()) {
         std::call_once(g_imguiInitFlag, [&]() {
+            // ImGui_ImplOpenGL3_Init creates shaders, VAO, fonts texture —
+            // it dirties GL state (active program, texture binding, etc.).
+            // Save/restore around Init so the game's GL state is preserved
+            // BEFORE the first ScopedState in the render block below.
+            gloverlay::ScopedState initState;
             IMGUI_CHECKVERSION();
             g_imguiCtx = ImGui::CreateContext();
             ImGui::SetCurrentContext(g_imguiCtx);
