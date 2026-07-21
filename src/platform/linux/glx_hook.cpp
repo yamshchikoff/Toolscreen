@@ -573,7 +573,22 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
             glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 
-            // Red quad on frame 1 only — verify GL rendering works
+            // ImGui FIRST (before our GL calls pollute state)
+            ImGui::SetCurrentContext(g_imguiCtx);
+            ImGuiIO& io = ImGui::GetIO();
+            if (io.DisplaySize.x <= 0.0f) {
+                io.DisplaySize = ImVec2(1920.0f, 1080.0f);
+                io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
+            }
+            X11Input::PollEvents();
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplX11_NewFrame();
+            ImGui::NewFrame();
+            ImGui::GetForegroundDrawList()->AddRect(ImVec2(100,100), ImVec2(300,200), IM_COL32(0,255,0,255));
+            ImGui::Render();
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+            // Red quad AFTER — verify FBO still bound
             static GLuint rq_prog = 0, rq_vao = 0;
             if (!rq_prog) {
                 const char* vs = "#version 330\nlayout(location=0)in vec2 p;void main(){gl_Position=vec4(p,0,1);}";
@@ -597,20 +612,6 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             glUseProgram(rq_prog); glBindVertexArray(rq_vao);
             glDrawArrays(GL_TRIANGLES, 0, 6);
             glBindVertexArray(0); glUseProgram(0);
-
-            ImGui::SetCurrentContext(g_imguiCtx);
-            ImGuiIO& io = ImGui::GetIO();
-            if (io.DisplaySize.x <= 0.0f) {
-                io.DisplaySize = ImVec2(1920.0f, 1080.0f);
-                io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
-            }
-            X11Input::PollEvents();
-            ImGui_ImplOpenGL3_NewFrame();
-            ImGui_ImplX11_NewFrame();
-            ImGui::NewFrame();
-            ImGui::GetForegroundDrawList()->AddRect(ImVec2(100,100), ImVec2(300,200), IM_COL32(0,255,0,255));
-            ImGui::Render();
-            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         }
     }
 
