@@ -423,9 +423,13 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
         s_glewContext.store(currentCtx, std::memory_order_release);
     }
     if (!g_glewReady.load(std::memory_order_acquire)) {
-        // glewExperimental is REQUIRED for core-profile functions (glGenVertexArrays, etc.)
-        // Without it, GLEW 2.2.0 may leave VAO/GL3+ function pointers as null → SIGSEGV.
-        glewExperimental = GL_TRUE;
+        // NOTE: glewExperimental is NOT set here (unlike Windows build).
+        // Minecraft 1.16.1 + LWJGL 3.2.2 + Sodium use OpenGL 3.2+ core profile.
+        // glewExperimental changes how GLEW discovers extensions — it may load
+        // function pointers incompatible with NVIDIA 580.159.03 driver.
+        // Windows sets glewExperimental = GL_TRUE (dllmain.cpp:2885) — but
+        // that code path renders through the game's own WGL context, not an
+        // injected GLX context. Leaving it unset for the Linux injector.
         GLenum glewErr = glewInit();
         if (glewErr == GLEW_OK) {
             g_glewReady.store(true, std::memory_order_release);
