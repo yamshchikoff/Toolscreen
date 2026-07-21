@@ -25,6 +25,11 @@ if [ -z "$PID" ]; then
 fi
 
 echo "PID: $PID"
+
+# Включаем coredump для процесса (нужен для отладки крашей)
+prlimit --pid "$PID" --core=unlimited
+echo "Core dumps enabled"
+
 echo "Инжект..."
 
 # Разрешаем ptrace
