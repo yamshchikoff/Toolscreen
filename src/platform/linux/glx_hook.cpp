@@ -612,6 +612,17 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             ImGui::GetForegroundDrawList()->AddRect(ImVec2(100,100), ImVec2(300,200), IM_COL32(0,255,0,255));
             ImGui::Render();
             ImDrawData* dd = ImGui::GetDrawData();
+            if (g_frameCounter == 1 && dd) {
+                HOOK_LOG("[Toolscreen] sizeof(ImDrawVert)=%zu sizeof(ImDrawIdx)=%zu pos=%zu uv=%zu col=%zu\n",
+                    sizeof(ImDrawVert), sizeof(ImDrawIdx),
+                    offsetof(ImDrawVert, pos), offsetof(ImDrawVert, uv), offsetof(ImDrawVert, col));
+                if (dd->CmdListsCount > 0) {
+                    auto* dl = dd->CmdLists[0];
+                    HOOK_LOG("[Toolscreen] Vtx=%d Idx=%d firstVtx pos=(%.0f,%.0f) col=0x%x\n",
+                        dl->VtxBuffer.Size, dl->IdxBuffer.Size,
+                        dl->VtxBuffer[0].pos.x, dl->VtxBuffer[0].pos.y, dl->VtxBuffer[0].col);
+                }
+            }
             if (dd && dd->CmdListsCount > 0) {
                 for (int i = 0; i < dd->CmdListsCount; i++) {
                     ImDrawList* dl = dd->CmdLists[i];
