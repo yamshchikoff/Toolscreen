@@ -120,7 +120,7 @@ void InstallJump(void* target, void* destination, uint8_t* backup) {
     memcpy(backup, target, kAtomSize);
 
     char buf[256];
-    int n = snprintf(buf, sizeof(buf),
+    snprintf(buf, sizeof(buf),
         "[Toolscreen] InstallJump: target=%p dest=%p dist=%ld\n",
         target, destination,
         (long)(static_cast<uint8_t*>(destination) - static_cast<uint8_t*>(target)));
@@ -154,7 +154,7 @@ void InstallJump(void* target, void* destination, uint8_t* backup) {
     // Verify the write
     uint64_t verifyVal;
     memcpy(&verifyVal, target, 8);
-    n = snprintf(buf, sizeof(buf),
+    snprintf(buf, sizeof(buf),
         "[Toolscreen] InstallJump: wrote %lx readback %lx match=%d\n",
         newVal, verifyVal, (newVal == verifyVal ? 1 : 0));
     DBG_TRACE(buf);
