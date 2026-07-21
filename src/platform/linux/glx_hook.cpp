@@ -73,12 +73,19 @@ namespace {
 // Limitation: ±2 GB range. The detour must be within 2 GB of the target.
 // For same-process .so injection this is always satisfied.
 
+constexpr size_t kJumpSize     = 5;   // jmp rel32 (atomic at target)
+constexpr size_t kBackupSize   = 16;  // bytes to backup (must cover ≥ kJumpSize
+                                      // and align to instruction boundary)
+constexpr size_t kAtomSize     = 8;   // atomic write alignment
+constexpr size_t kBridgeSize   = 64;  // small page for bridge trampoline
+constexpr size_t kTrampSize    = 128; // trampoline allocation
+
 struct HookEntry {
     void* target;
     void* detour;
     void* bridge;              // Near-target jump bridge (for >2GB)
     void* trampoline;          // Callable original: backup bytes + jmp target+5
-    uint8_t backup[8];         // Original 8 bytes at target
+    uint8_t backup[kBackupSize]; // Original bytes at target
     size_t bridgeSize;         // Size of bridge allocation
     size_t trampolineSize;     // Size of trampoline allocation
     bool enabled;
@@ -95,11 +102,6 @@ static void DBG_TRACE(const char* msg) {
     int fd = open("/home/user/toolscreen_trace.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (fd >= 0) { write(fd, msg, strlen(msg)); close(fd); }
 }
-
-constexpr size_t kJumpSize     = 5;   // jmp rel32
-constexpr size_t kAtomSize     = 8;   // atomic write alignment
-constexpr size_t kAbsJumpSize  = 14;  // mov rax, imm64; jmp rax (no distance limit)
-constexpr size_t kBridgeSize   = 64;  // small page for bridge trampoline
 
 void* PageAlign(void* addr) {
     long pageSize = sysconf(_SC_PAGESIZE);
@@ -141,7 +143,8 @@ static void* AllocateNear(void* near_addr, size_t size) {
 // Install a 5-byte atomic jmp rel32 at target → destination.
 // Requires |dest - target| < 2GB. Returns true on success.
 static bool WriteRelJump(void* target, void* destination, uint8_t* backup) {
-    memcpy(backup, target, kAtomSize);
+    // Backup enough bytes for the trampoline to execute a full prologue
+    memcpy(backup, target, kBackupSize);
 
     size_t span = PageSpan(target, kJumpSize);
     if (mprotect(PageAlign(target), span, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
@@ -306,16 +309,17 @@ bool CreateHook(void* target, void* detour, void** original) {
         return false;
     }
 
-    // Create callable trampoline: [backup 5 bytes] [jmp rel32 to target+5]
-    // This allows calling the original function without hitting our own hook.
-    size_t trampSize = 64;
+    // Create callable trampoline: [backup kBackupSize bytes] [jmp to target+kBackupSize]
+    // kBackupSize (16) covers the full function prologue (endbr64 + mov + ...)
+    // so the jump lands on a proper instruction boundary, not mid-instruction.
+    size_t trampSize = kTrampSize;
     void* tramp = mmap(nullptr, trampSize, PROT_READ | PROT_WRITE | PROT_EXEC,
                        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (tramp != MAP_FAILED) {
-        memcpy(tramp, entry.backup, kJumpSize);
-        uint8_t* jmp = static_cast<uint8_t*>(tramp) + kJumpSize;
+        memcpy(tramp, entry.backup, kBackupSize);
+        uint8_t* jmp = static_cast<uint8_t*>(tramp) + kBackupSize;
         jmp[0] = 0xE9;
-        int64_t rel = (static_cast<uint8_t*>(target) + kJumpSize) - (jmp + 5);
+        int64_t rel = (static_cast<uint8_t*>(target) + kBackupSize) - (jmp + 5);
         int32_t rel32 = static_cast<int32_t>(rel);
         memcpy(&jmp[1], &rel32, 4);
         mprotect(tramp, trampSize, PROT_READ | PROT_EXEC);
