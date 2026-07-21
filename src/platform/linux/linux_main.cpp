@@ -27,18 +27,23 @@
 #include <thread>
 #include <atomic>
 #include <dlfcn.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <sys/syscall.h>
 
-// Log writer — пишет в файл вместо stderr (который Minecraft не сохраняет).
-// Открывает/закрывает файл на каждый вызов (как HOOK_LOG в glx_hook.cpp).
-// Удержание FILE* открытым мешает другим логерам в том же процессе.
+// Log to file (stderr is discarded by Minecraft's JVM).
+// Opens/closes on every call — keeps no state, survives signals.
 static void TS_LOG(const char* fmt, ...) {
     FILE* f = fopen("/home/user/toolscreen.log", "a");
     if (f) {
         va_list va; va_start(va, fmt); vfprintf(f, fmt, va); va_end(va);
         fclose(f);
     }
+}
+// Trace log — unbuffered write(), survives crashes better than fopen.
+static void TS_TRACE(const char* msg) {
+    int fd = open("/home/user/toolscreen_trace.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd >= 0) { write(fd, msg, strlen(msg)); close(fd); }
 }
 
 // ---- Global state (mirrors Windows dllmain.cpp globals) ----
@@ -359,38 +364,51 @@ static std::once_flag g_lazyInitFlag;
 
 void ToolscreenLazyInit() {
     std::call_once(g_lazyInitFlag, []() {
+        TS_TRACE("[Toolscreen] LazyInit: enter\n");
         TS_LOG("[Toolscreen] Lazy init triggered\n");
 
         XInitThreads();
+        TS_TRACE("[Toolscreen] LazyInit: XInitThreads done\n");
         // NOTE: NO signal handlers — JVM uses SIGSEGV internally
 
         if (!InitPlatform()) {
             TS_LOG("[Toolscreen] Platform init failed, Toolscreen disabled\n");
+            TS_TRACE("[Toolscreen] LazyInit: InitPlatform FAILED\n");
             return;
         }
+        TS_TRACE("[Toolscreen] LazyInit: InitPlatform OK\n");
 
         if (!InitLogger()) {
             TS_LOG("[Toolscreen] Logger init failed\n");
+            TS_TRACE("[Toolscreen] LazyInit: InitLogger FAILED\n");
             return;
         }
+        TS_TRACE("[Toolscreen] LazyInit: InitLogger OK\n");
 
         if (!InitGLHook()) {
             TS_LOG("[Toolscreen] GL hook init failed\n");
+            TS_TRACE("[Toolscreen] LazyInit: InitGLHook FAILED\n");
             return;
         }
+        TS_TRACE("[Toolscreen] LazyInit: InitGLHook OK\n");
 
         SharedInit::InitConfig(g_config, Platform::GetModuleDirectory());
+        TS_TRACE("[Toolscreen] LazyInit: InitConfig done\n");
         LoadToolscreenConfig();
         StartThreads();
         g_initialized.store(true);
         TS_LOG("[Toolscreen] Initialization complete\n");
+        TS_TRACE("[Toolscreen] LazyInit: complete\n");
     });
 }
 
 extern "C" __attribute__((constructor))
 void ToolscreenLinuxInit() {
+    TS_TRACE("[Toolscreen] constructor: enter\n");
     TS_LOG("[Toolscreen] libtoolscreen.so loaded (constructor)\n");
+    TS_TRACE("[Toolscreen] constructor: calling InstallRuntimeHook\n");
     GLXHook::InstallRuntimeHook();
+    TS_TRACE("[Toolscreen] constructor: done\n");
 }
 
 // __attribute__((destructor)) runs when the .so is unloaded

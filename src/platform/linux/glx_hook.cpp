@@ -593,27 +593,35 @@ bool IsHooked() { return g_realSwapBuffers.load() != nullptr; }
 // Called from the constructor. Uses the existing inline hook engine to
 // redirect glXSwapBuffers → hk_glXSwapBuffers in the already-running process.
 void InstallRuntimeHook() {
+    TRACE_CALL("[Toolscreen] InstallRuntimeHook: enter\n");
     static std::once_flag s_flag;
     std::call_once(s_flag, []() {
+        TRACE_CALL("[Toolscreen] InstallRuntimeHook: call_once body\n");
         // RTLD_NEXT skips our own .so and finds the real libGL's glXSwapBuffers
         void* target = dlsym(RTLD_NEXT, "glXSwapBuffers");
+        TRACE_CALL("[Toolscreen] InstallRuntimeHook: dlsym done\n");
         if (!target) {
             void* libGL = dlopen("libGL.so.1", RTLD_LAZY | RTLD_NOLOAD);
             if (libGL) target = dlsym(libGL, "glXSwapBuffers");
         }
         if (!target) {
             HOOK_LOG("[Toolscreen] InstallRuntimeHook: glXSwapBuffers not found\n");
+            TRACE_CALL("[Toolscreen] InstallRuntimeHook: target not found, return\n");
             return;
         }
+        TRACE_CALL("[Toolscreen] InstallRuntimeHook: calling CreateHook\n");
         void* trampoline = nullptr;
         if (CreateHook(target, reinterpret_cast<void*>(hk_glXSwapBuffers), &trampoline) && trampoline) {
             // Store the trampoline (original glXSwapBuffers) for Shutdown/CallRealSwapBuffers
             g_realSwapBuffers.store(reinterpret_cast<SwapBuffersFunc>(trampoline));
             HOOK_LOG("[Toolscreen] glXSwapBuffers hooked at %p\n", target);
+            TRACE_CALL("[Toolscreen] InstallRuntimeHook: hook OK\n");
         } else {
             HOOK_LOG("[Toolscreen] InstallRuntimeHook: CreateHook failed\n");
+            TRACE_CALL("[Toolscreen] InstallRuntimeHook: CreateHook FAILED\n");
         }
     });
+    TRACE_CALL("[Toolscreen] InstallRuntimeHook: exit\n");
 }
 
 void CallRealSwapBuffers(Display* dpy, GLXDrawable drawable) {
