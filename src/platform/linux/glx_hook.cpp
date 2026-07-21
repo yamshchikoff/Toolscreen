@@ -61,23 +61,23 @@ BlitFramebufferFunc g_realBlitFramebuffer = nullptr;
 
 namespace {
 
-// ---- Inline hook engine (kept for potential future non-GL use) ----
-// Replaces the core MinHook functionality using mprotect + trampolines.
-// x86-64 only: installs a 14-byte absolute jump: mov rax, imm64; jmp rax
+// ---- Inline hook engine (safe for multithreaded use) ----
+// x86-64 only: installs a 5-byte relative jump: jmp rel32 (E9 + int32 offset).
 //
-// WARNING: This engine is NOT safe for multithreaded code. The mprotect +
-// memcpy sequence can tear instructions while another thread executes the
-// same page, causing SIGILL or undefined behaviour. It is deliberately NOT
-// used for GL/GLX functions — those are intercepted via LD_PRELOAD symbol
-// interposition (see extern "C" blocks below).
-// Only use CreateHook/EnableHook for functions known to be single-threaded
-// or during process startup before other threads are active.
+// Unlike the old 14-byte absolute jump (mov rax, imm64; jmp rax), a 5-byte
+// jmp rel32 fits within a single 8-byte aligned write — which is atomic on
+// x86-64. Other threads see either the original code or the complete jump,
+// never a torn instruction. The page is kept RWX during the write (X remains
+// set), so other threads don't fault while we modify it.
+//
+// Limitation: ±2 GB range. The detour must be within 2 GB of the target.
+// For same-process .so injection this is always satisfied.
 
 struct HookEntry {
     void* target;
     void* detour;
     void* trampoline;           // Callable original function
-    uint8_t backup[14];         // Original bytes (restored on DisableHook)
+    uint8_t backup[8];          // Original bytes (8 for atomic write alignment)
     size_t trampolineSize;      // For munmap in Shutdown
     bool enabled;
 };
@@ -88,7 +88,8 @@ std::atomic<bool> g_initialized{false};
 std::atomic<bool> g_hooksEnabled{false};
 std::atomic<bool> g_glewReady{false};
 
-constexpr size_t kJumpSize = 14; // mov rax, imm64 = 10 bytes; jmp rax = 2 bytes; NOP padding
+constexpr size_t kJumpSize = 5;  // jmp rel32 = 5 bytes
+constexpr size_t kAtomSize  = 8;  // atomic write: 8 bytes (covers 5-byte jump)
 
 // Calculate the page-aligned start address containing `addr`
 void* PageAlign(void* addr) {
@@ -105,68 +106,75 @@ size_t PageSpan(void* addr, size_t size) {
     return end - start;
 }
 
-// Write an absolute 64-bit jump at `target` redirecting to `destination`.
-// Backs up original bytes into `backup`.
-// Returns the page span that was made writable (caller should restore protection).
+// Write a 5-byte relative jump (E9 + rel32) at `target` redirecting to
+// `destination`. Uses an 8-byte atomic store — safe for concurrent readers.
+// Backs up original 8 bytes into `backup` (8 bytes for alignment).
 void InstallJump(void* target, void* destination, uint8_t* backup) {
-    // Back up original bytes
-    memcpy(backup, target, kJumpSize);
+    // Back up 8 original bytes (need 8 for atomic write alignment)
+    memcpy(backup, target, kAtomSize);
 
-    // Make page writable
+    // Make page writable (keep EXEC — other threads must not fault)
     size_t span = PageSpan(target, kJumpSize);
     if (mprotect(PageAlign(target), span, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
-        //HOOK_LOG("[Toolscreen] mprotect FAILED for %p: %s\n", target, strerror(errno));
+        //HOOK_LOG("[Toolscreen] InstallJump: mprotect RWX failed for %p: %s\n", target, strerror(errno));
         return;
     }
 
-    // Fill with NOPs
-    memset(target, 0x90, kJumpSize);
+    // Build new 8 bytes: 5-byte jmp rel32 + 3 bytes from original (never executed)
+    uint8_t newBytes[kAtomSize];
+    memcpy(newBytes, target, kAtomSize);        // copy current 8 bytes
+    newBytes[0] = 0xE9;                         // JMP rel32
+    int64_t rel = static_cast<uint8_t*>(destination) - (static_cast<uint8_t*>(target) + 5);
+    if (rel < INT32_MIN || rel > INT32_MAX) {
+        //HOOK_LOG("[Toolscreen] InstallJump: target too far (>2GB), need absolute jump\n");
+        mprotect(PageAlign(target), span, PROT_READ | PROT_EXEC);
+        return;
+    }
+    int32_t rel32 = static_cast<int32_t>(rel);
+    memcpy(&newBytes[1], &rel32, 4);
 
-    // Write: mov rax, imm64; jmp rax
-    uint8_t* code = static_cast<uint8_t*>(target);
-    code[0] = 0x48; // REX.W
-    code[1] = 0xB8; // MOV RAX, imm64
-    memcpy(&code[2], &destination, sizeof(void*));
-    code[10] = 0xFF; // JMP RAX
-    code[11] = 0xE0;
+    // Atomic 8-byte write — other threads see old or new, never torn
+    uint64_t newVal;
+    memcpy(&newVal, newBytes, 8);
+    __atomic_store_n(reinterpret_cast<uint64_t*>(target), newVal, __ATOMIC_SEQ_CST);
 
-    // Restore page protection
+    // Restore page protection (remove W)
     mprotect(PageAlign(target), span, PROT_READ | PROT_EXEC);
 }
 
-// Write the original bytes back to `target` (reverse of InstallJump).
+// Write the original 8 bytes back to `target` (reverse of InstallJump).
 void RestoreJump(void* target, const uint8_t* backup) {
     size_t span = PageSpan(target, kJumpSize);
     if (mprotect(PageAlign(target), span, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
-        //HOOK_LOG("[Toolscreen] mprotect RWX (restore) failed for %p: %s\n", target, strerror(errno));
+        //HOOK_LOG("[Toolscreen] RestoreJump: mprotect RWX failed for %p: %s\n", target, strerror(errno));
         return;
     }
-    memcpy(target, backup, kJumpSize);
+    uint64_t oldVal;
+    memcpy(&oldVal, backup, 8);
+    __atomic_store_n(reinterpret_cast<uint64_t*>(target), oldVal, __ATOMIC_SEQ_CST);
     mprotect(PageAlign(target), span, PROT_READ | PROT_EXEC);
 }
 
-// Create a trampoline that executes the backed-up bytes then jumps to (target + kJumpSize)
+// Create a trampoline that executes the backed-up bytes (5) then jumps to (target + kJumpSize)
 void* CreateTrampoline(void* target, const uint8_t* backup) {
-    // Allocate executable memory for trampoline
-    size_t trampSize = kJumpSize + kJumpSize; // backup bytes + another jump
+    // Trampoline layout: [backup 5 bytes] [jmp rel32 to target+5 (5 bytes)]
+    size_t trampSize = kAtomSize + kJumpSize;  // 8 + 5 = 13, padded to page
     void* tramp = mmap(nullptr, trampSize, PROT_READ | PROT_WRITE | PROT_EXEC,
                        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (tramp == MAP_FAILED) {
-        //HOOK_LOG("[Toolscreen] mmap trampoline failed\n");
+        //HOOK_LOG("[Toolscreen] CreateTrampoline: mmap failed\n");
         return nullptr;
     }
 
-    // Copy original bytes
+    // Copy 5 original bytes
     memcpy(tramp, backup, kJumpSize);
 
-    // Append jump to original function (after the backup bytes)
+    // Append jump to original function (after the 5 backup bytes)
     uint8_t* code = static_cast<uint8_t*>(tramp) + kJumpSize;
-    uintptr_t nextAddr = reinterpret_cast<uintptr_t>(target) + kJumpSize;
-    code[0] = 0x48;
-    code[1] = 0xB8;
-    memcpy(&code[2], &nextAddr, sizeof(void*));
-    code[10] = 0xFF;
-    code[11] = 0xE0;
+    code[0] = 0xE9;
+    int64_t rel = (static_cast<uint8_t*>(target) + kJumpSize) - (code + 5);
+    int32_t rel32 = static_cast<int32_t>(rel);
+    memcpy(&code[1], &rel32, 4);
 
     mprotect(tramp, trampSize, PROT_READ | PROT_EXEC);
     return tramp;
@@ -237,7 +245,7 @@ bool CreateHook(void* target, void* detour, void** original) {
     memset(&entry, 0, sizeof(entry));
     entry.target = target;
     entry.detour = detour;
-    entry.trampolineSize = kJumpSize + kJumpSize; // backup + jump
+    entry.trampolineSize = kAtomSize + kJumpSize; // backup (8) + jump (5)
     entry.enabled = false;
 
     // Install the jump from target to detour
@@ -402,9 +410,106 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     }
     inHkSwap = true;
 
-    // === MINIMAL TEST: only real swap, no init, no ImGui ===
-    // If this crashes → problem is in the inline hook (mprotect).
-    // If stable → problem is in GLEW/ImGui/OpenGL interaction.
+    // Deferred initialization — avoids conflicts with Java classloaders
+    ToolscreenLazyInit();
+
+    // Lazy GLEW initialization on first call (requires an active GL context)
+    static std::atomic<GLXContext> s_glewContext{nullptr};
+    GLXContext currentCtx = glXGetCurrentContext();
+    GLXContext prevCtx = s_glewContext.load(std::memory_order_acquire);
+    bool contextChanged = (currentCtx != prevCtx);
+    if (contextChanged) {
+        HOOK_LOG("[Toolscreen] GL context changed: %p → %p, resetting GLEW\n",
+                reinterpret_cast<void*>(prevCtx),
+                reinterpret_cast<void*>(currentCtx));
+        g_glewReady.store(false, std::memory_order_release);
+        s_glewContext.store(currentCtx, std::memory_order_release);
+    }
+    if (!g_glewReady.load(std::memory_order_acquire)) {
+        GLenum glewErr = glewInit();
+        if (glewErr == GLEW_OK) {
+            g_glewReady.store(true, std::memory_order_release);
+            s_glewContext.store(glXGetCurrentContext(), std::memory_order_release);
+            HOOK_LOG("[Toolscreen] GLEW initialized OK (context %p)\n",
+                    reinterpret_cast<void*>(s_glewContext.load()));
+        } else {
+            HOOK_LOG("[Toolscreen] GLEW init failed: %s\n",
+                    reinterpret_cast<const char*>(glewGetErrorString(glewErr)));
+        }
+    }
+
+    // Create ImGui context (once, thread-safe)
+    static std::once_flag g_imguiInitFlag;
+    static std::atomic<bool> g_imguiInitialized{false};
+    static ImGuiContext* g_imguiCtx = nullptr;
+    if (!g_imguiInitialized.load(std::memory_order_acquire) && g_glewReady.load()) {
+        std::call_once(g_imguiInitFlag, [&]() {
+            gloverlay::ScopedState initState;
+            IMGUI_CHECKVERSION();
+            g_imguiCtx = ImGui::CreateContext();
+            ImGui::SetCurrentContext(g_imguiCtx);
+            ImGui_ImplOpenGL3_Init("#version 330");
+            ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+            ImGui::GetStyle().FrameRounding = 3.0f;
+            g_imguiInitialized.store(true, std::memory_order_release);
+            HOOK_LOG("[Toolscreen] ImGui initialized (X11/OpenGL3)\n");
+        });
+    }
+
+    // Detect/update game window from current GLX drawable
+    {
+        GLXDrawable currentDrawable = glXGetCurrentDrawable();
+        if (currentDrawable) {
+            Window win = static_cast<Window>(currentDrawable);
+            X11Display::SetGameWindow(win);
+            if (!g_inputWired && g_imguiCtx) {
+                ImGui::SetCurrentContext(g_imguiCtx);
+                X11Input::Install(win);
+                ImGui_ImplX11_Init(X11Display::Get(), win);
+                X11Input::SetEventCallback(RouteX11EventToImGui);
+                g_inputWired = true;
+                HOOK_LOG("[Toolscreen] X11 input installed on window 0x%lx\n", win);
+            }
+        }
+    }
+
+    // Render ImGui overlay
+    static int g_frameCounter = 0;
+    ++g_frameCounter;
+    bool shouldLog = (g_frameCounter % 100 == 1);
+
+    if (g_imguiInitialized && g_imguiCtx && X11Display::GetGameWindow() != 0) {
+        if (!glXGetCurrentContext()) {
+            if (shouldLog) HOOK_LOG("[Toolscreen] Frame %d: no GL context, skipping\n", g_frameCounter);
+            inHkSwap = false;
+            static SwapBuffersFunc s_fallbackSwap = nullptr;
+            if (!s_fallbackSwap) s_fallbackSwap = reinterpret_cast<SwapBuffersFunc>(dlsym(RTLD_NEXT, "glXSwapBuffers"));
+            if (s_fallbackSwap) s_fallbackSwap(dpy, drawable);
+            return;
+        }
+
+        if (shouldLog) HOOK_LOG("[Toolscreen] Frame %d: rendering ImGui\n", g_frameCounter);
+        {
+            gloverlay::ScopedState glState;
+
+            ImGui::SetCurrentContext(g_imguiCtx);
+            ImGuiIO& io = ImGui::GetIO();
+            if (io.DisplaySize.x <= 0.0f) {
+                io.DisplaySize = ImVec2(1920.0f, 1080.0f);
+                io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
+            }
+            X11Input::PollEvents();
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplX11_NewFrame();
+            ImGui::NewFrame();
+            ImGui::Begin("Toolscreen");
+            ImGui::Text("Injector OK");
+            ImGui::End();
+            ImGui::Render();
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        }
+        if (shouldLog) HOOK_LOG("[Toolscreen] Frame %d: GL state restored\n", g_frameCounter);
+    }
 
     // Call the real glXSwapBuffers via RTLD_NEXT
     static SwapBuffersFunc s_realSwap = nullptr;
@@ -413,7 +518,6 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     }
     inHkSwap = false;
     if (s_realSwap) s_realSwap(dpy, drawable);
-    // Reset recursion guard for next frame
     inHkSwap = false;
 }
 
