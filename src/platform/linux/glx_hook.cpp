@@ -423,6 +423,9 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
         s_glewContext.store(currentCtx, std::memory_order_release);
     }
     if (!g_glewReady.load(std::memory_order_acquire)) {
+        // glewExperimental is REQUIRED for core-profile functions (glGenVertexArrays, etc.)
+        // Without it, GLEW 2.2.0 may leave VAO/GL3+ function pointers as null → SIGSEGV.
+        glewExperimental = GL_TRUE;
         GLenum glewErr = glewInit();
         if (glewErr == GLEW_OK) {
             g_glewReady.store(true, std::memory_order_release);
@@ -512,14 +515,22 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
                 io.DisplaySize = ImVec2(1920.0f, 1080.0f);
                 io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
             }
+            TRACE_CALL("[Toolscreen] PollEvents\n");
             X11Input::PollEvents();
+            TRACE_CALL("[Toolscreen] OpenGL3_NewFrame\n");
             ImGui_ImplOpenGL3_NewFrame();
+            TRACE_CALL("[Toolscreen] X11_NewFrame\n");
             ImGui_ImplX11_NewFrame();
+            TRACE_CALL("[Toolscreen] NewFrame\n");
             ImGui::NewFrame();
             static bool showDemo = true;
+            TRACE_CALL("[Toolscreen] ShowDemoWindow\n");
             ImGui::ShowDemoWindow(&showDemo);
+            TRACE_CALL("[Toolscreen] Render\n");
             ImGui::Render();
+            TRACE_CALL("[Toolscreen] RenderDrawData\n");
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            TRACE_CALL("[Toolscreen] RenderDrawData done\n");
         }
         if (shouldLog) HOOK_LOG("[Toolscreen] Frame %d: GL state restored\n", g_frameCounter);
     }
