@@ -586,14 +586,12 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
                 io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
             }
             X11Input::PollEvents();
-            ImGui_ImplOpenGL3_NewFrame();
-            ImGui_ImplX11_NewFrame();
-            ImGui::NewFrame();
-            ImGui::Begin("Toolscreen");
-            ImGui::Text("Injector OK");
-            ImGui::End();
-            ImGui::Render();
-            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            // Test: red rectangle via glClear + scissor (works in any GL version)
+            glEnable(GL_SCISSOR_TEST);
+            glScissor(50, 50, 200, 100);
+            glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glDisable(GL_SCISSOR_TEST);
         }
         if (shouldLog) HOOK_LOG("[Toolscreen] Frame %d: GL state restored\n", g_frameCounter);
     }
