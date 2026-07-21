@@ -93,6 +93,7 @@ struct HookEntry {
 
 std::mutex g_hookMutex;
 std::unordered_map<void*, HookEntry> g_hooks;
+HookEntry* g_activeHook = nullptr;  // The glXSwapBuffers hook entry
 std::atomic<bool> g_initialized{false};
 std::atomic<bool> g_hooksEnabled{false};
 std::atomic<bool> g_glewReady{false};
@@ -474,8 +475,32 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     // glXSwapBuffers which should NOT re-enter our hook.
     static thread_local bool inHkSwap = false;
     if (inHkSwap) {
-        auto* realSwap = g_realSwapBuffers.load(std::memory_order_acquire);
-        if (realSwap) realSwap(dpy, drawable);
+        // Re-entered — just call real glXSwapBuffers directly via unpatch
+        std::lock_guard<std::mutex> lock(g_hookMutex);
+        if (g_activeHook && g_activeHook->enabled) {
+            auto* hk = g_activeHook;
+            void* target = hk->target;
+            size_t span = PageSpan(target, kJumpSize);
+            uint64_t origVal;
+            memcpy(&origVal, hk->backup, 8);
+            mprotect(PageAlign(target), span, PROT_READ | PROT_WRITE | PROT_EXEC);
+            __atomic_store_n(reinterpret_cast<uint64_t*>(target), origVal, __ATOMIC_SEQ_CST);
+            mprotect(PageAlign(target), span, PROT_READ | PROT_EXEC);
+            reinterpret_cast<SwapBuffersFunc>(target)(dpy, drawable);
+            // Re-patch
+            uint8_t newBytes[8];
+            memcpy(newBytes, target, 8);
+            newBytes[0] = 0xE9;
+            void* dest = hk->bridge ? hk->bridge : hk->detour;
+            int64_t rel = static_cast<uint8_t*>(dest) - (static_cast<uint8_t*>(target) + 5);
+            int32_t rel32 = static_cast<int32_t>(rel);
+            memcpy(&newBytes[1], &rel32, 4);
+            uint64_t newVal;
+            memcpy(&newVal, newBytes, 8);
+            mprotect(PageAlign(target), span, PROT_READ | PROT_WRITE | PROT_EXEC);
+            __atomic_store_n(reinterpret_cast<uint64_t*>(target), newVal, __ATOMIC_SEQ_CST);
+            mprotect(PageAlign(target), span, PROT_READ | PROT_EXEC);
+        }
         return;
     }
     inHkSwap = true;
@@ -571,19 +596,46 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
         }
     }
 
-    // Call real glXSwapBuffers via TRAMPOLINE (not dlsym RTLD_NEXT!).
-    // dlsym(RTLD_NEXT) returns the patched libGL function which has our
-    // jump → infinite recursion. The trampoline executes the original
-    // first 5 bytes then jumps to target+5 — bypassing our hook.
+    // Call real glXSwapBuffers via TEMPORARY UNPATCH.
+    // Trampolines break RIP-relative addressing (glXSwapBuffers uses
+    // mov offset(%rip),%rax). Instead: restore original bytes, call the
+    // real function, then re-patch the jump.
     inHkSwap = false;
-    auto* realSwap = g_realSwapBuffers.load(std::memory_order_acquire);
-    if (realSwap) {
-        realSwap(dpy, drawable);
-    } else {
-        // Fallback (should never happen if hook installed OK)
-        static SwapBuffersFunc s_fallback = nullptr;
-        if (!s_fallback) s_fallback = reinterpret_cast<SwapBuffersFunc>(dlsym(RTLD_NEXT, "glXSwapBuffers"));
-        if (s_fallback) s_fallback(dpy, drawable);
+    {
+        std::lock_guard<std::mutex> lock(g_hookMutex);
+        if (g_activeHook && g_activeHook->enabled) {
+            auto* hk = g_activeHook;
+            void* target = hk->target;
+            size_t span = PageSpan(target, kJumpSize);
+
+            // 1. Restore original bytes
+            uint64_t origVal;
+            memcpy(&origVal, hk->backup, 8);
+            mprotect(PageAlign(target), span, PROT_READ | PROT_WRITE | PROT_EXEC);
+            __atomic_store_n(reinterpret_cast<uint64_t*>(target), origVal, __ATOMIC_SEQ_CST);
+            mprotect(PageAlign(target), span, PROT_READ | PROT_EXEC);
+
+            // 2. Call the real function (now unpatched)
+            reinterpret_cast<SwapBuffersFunc>(target)(dpy, drawable);
+
+            // 3. Re-patch — 5-byte jmp rel32
+            uint8_t newBytes[8];
+            memcpy(newBytes, target, 8);  // current = orig bytes
+            newBytes[0] = 0xE9;
+            void* dest = hk->bridge ? hk->bridge : hk->detour;
+            int64_t rel = static_cast<uint8_t*>(dest) - (static_cast<uint8_t*>(target) + 5);
+            int32_t rel32 = static_cast<int32_t>(rel);
+            memcpy(&newBytes[1], &rel32, 4);
+            uint64_t newVal;
+            memcpy(&newVal, newBytes, 8);
+            mprotect(PageAlign(target), span, PROT_READ | PROT_WRITE | PROT_EXEC);
+            __atomic_store_n(reinterpret_cast<uint64_t*>(target), newVal, __ATOMIC_SEQ_CST);
+            mprotect(PageAlign(target), span, PROT_READ | PROT_EXEC);
+        } else {
+            static SwapBuffersFunc fb = nullptr;
+            if (!fb) fb = reinterpret_cast<SwapBuffersFunc>(dlsym(RTLD_NEXT, "glXSwapBuffers"));
+            if (fb) fb(dpy, drawable);
+        }
     }
     inHkSwap = false;
 }
@@ -655,6 +707,9 @@ void InstallRuntimeHook() {
         void* trampoline = nullptr;
         if (CreateHook(target, reinterpret_cast<void*>(hk_glXSwapBuffers), &trampoline) && trampoline) {
             g_realSwapBuffers.store(reinterpret_cast<SwapBuffersFunc>(trampoline));
+            // Store active hook pointer for unpatch-repatch in hk_glXSwapBuffers
+            auto it = g_hooks.find(target);
+            if (it != g_hooks.end()) g_activeHook = &it->second;
             HOOK_LOG("[Toolscreen] glXSwapBuffers hooked at %p trampoline=%p\n", target, trampoline);
             TRACE_CALL("[Toolscreen] InstallRuntimeHook: hook OK\n");
         } else {
