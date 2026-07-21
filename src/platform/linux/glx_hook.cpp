@@ -582,6 +582,16 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             TRACE_CALL("[Toolscreen] GL test: glEnable(BLEND)\n");
             glEnable(GL_BLEND);
 
+            TRACE_CALL("[Toolscreen] GL test: glGenVertexArrays\n");
+            GLuint testVAO = 0;
+            glGenVertexArrays(1, &testVAO);
+
+            TRACE_CALL("[Toolscreen] GL test: glBindVertexArray(testVAO)\n");
+            glBindVertexArray(testVAO);
+
+            TRACE_CALL("[Toolscreen] GL test: glDeleteVertexArrays\n");
+            glDeleteVertexArrays(1, &testVAO);
+
             TRACE_CALL("[Toolscreen] GL test: DONE\n");
         }
         if (shouldLog) HOOK_LOG("[Toolscreen] Frame %d: GL state restored\n", g_frameCounter);
