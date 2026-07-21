@@ -649,6 +649,8 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
                     }
                     glUseProgram(igp);
                     glUniformMatrix4fv(glGetUniformLocation(igp, "P"), 1, GL_FALSE, &proj[0][0]);
+                    // Draw first 3 vertices directly (no indices) to test position
+                    glDrawArrays(GL_TRIANGLES, 0, 3);
                     glDrawElements(GL_TRIANGLES, dl->IdxBuffer.Size, sizeof(ImDrawIdx) == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT, nullptr);
                     glBindVertexArray(0);
                     glDeleteVertexArrays(1, &tmp_vao); glDeleteBuffers(1, &tmp_vbo); glDeleteBuffers(1, &tmp_ebo);
