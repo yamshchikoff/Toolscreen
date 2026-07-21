@@ -563,15 +563,16 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
 
         if (shouldLog) HOOK_LOG("[Toolscreen] Frame %d: rendering ImGui\n", g_frameCounter);
         {
-            // Drain the GPU pipeline before touching GL state.
-            // Sodium may have pending compute shaders or indirect draws
-            // that leave the GPU in a state incompatible with our
-            // immediate-mode ImGui rendering.
-            TRACE_CALL("[Toolscreen] glFinish\n");
-            glFinish();
-            TRACE_CALL("[Toolscreen] glFinish done\n");
-
             gloverlay::ScopedState glState;
+
+            // CRITICAL: Sodium sets GL_UNPACK_ROW_LENGTH for its own texture
+            // uploads. ImGui font texture upload reads this value and tries
+            // to read out-of-bounds memory → SIGSEGV in NVIDIA driver.
+            // Reset pixel store before ImGui touches any textures.
+            glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+            glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
+            glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 
             ImGui::SetCurrentContext(g_imguiCtx);
             ImGuiIO& io = ImGui::GetIO();
@@ -583,12 +584,11 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplX11_NewFrame();
             ImGui::NewFrame();
-            // NO Begin/End — empty draw list
+            ImGui::Begin("Toolscreen");
+            ImGui::Text("Injector OK");
+            ImGui::End();
             ImGui::Render();
-
-            TRACE_CALL("[Toolscreen] RenderDrawData (empty)\n");
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-            TRACE_CALL("[Toolscreen] RenderDrawData done\n");
         }
         if (shouldLog) HOOK_LOG("[Toolscreen] Frame %d: GL state restored\n", g_frameCounter);
     }
