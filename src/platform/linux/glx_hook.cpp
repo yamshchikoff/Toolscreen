@@ -483,20 +483,12 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     // Step 1: Lazy init (X11, config — NO GLEW, NO ImGui)
     ToolscreenLazyInit();
 
-    // Step 2: Call glXSwapBuffersMscOML instead of glXSwapBuffers.
-    // glXSwapBuffers is patched with our jump — we cannot call it.
-    // glXSwapBuffersMscOML is a different function in libGL.so that
-    // also swaps buffers but is NOT patched by our hook.
-    using SwapMscFunc = int64_t (*)(Display*, GLXDrawable, int64_t, int64_t, int64_t);
-    static SwapMscFunc s_swapMsc = nullptr;
-    if (!s_swapMsc) {
-        void* libgl = dlopen("libGL.so.1", RTLD_LAZY | RTLD_NOLOAD);
-        if (libgl) s_swapMsc = reinterpret_cast<SwapMscFunc>(dlsym(libgl, "glXSwapBuffersMscOML"));
-        HOOK_LOG("[Toolscreen] glXSwapBuffersMscOML = %p\n", (void*)s_swapMsc);
-    }
-    if (s_swapMsc) {
-        inHkSwap = false;
-        s_swapMsc(dpy, drawable, 0, 0, 0);
+    // Step 2: Call the real implementation via saved dispatch pointer.
+    // g_realSwapBuffers was saved from the dispatch table before patching.
+    inHkSwap = false;
+    auto* realImpl = g_realSwapBuffers.load(std::memory_order_acquire);
+    if (realImpl) {
+        realImpl(dpy, drawable);
     }
     inHkSwap = false;
 
@@ -638,38 +630,54 @@ SwapBuffersFunc GetRealSwapBuffers() { return g_realSwapBuffers.load(); }
 bool IsHooked() { return g_realSwapBuffers.load() != nullptr; }
 
 // Runtime hook for dlopen-based injection.
-// Called from the constructor. Uses the existing inline hook engine to
-// redirect glXSwapBuffers → hk_glXSwapBuffers in the already-running process.
+// Instead of patching code (mprotect on .text crashes JVM), we patch the
+// dispatch table pointer that glXSwapBuffers jumps through.
+//
+// glXSwapBuffers does:  mov offset(%rip),%rax; jmp *0x118(%rax)
+// We load the table pointer from the mov instruction, then replace
+// table[0x118/8] with our hk_glXSwapBuffers. This is a data-only patch.
 void InstallRuntimeHook() {
     TRACE_CALL("[Toolscreen] InstallRuntimeHook: enter\n");
     static std::once_flag s_flag;
     std::call_once(s_flag, []() {
         TRACE_CALL("[Toolscreen] InstallRuntimeHook: call_once body\n");
-        // RTLD_NEXT skips our own .so and finds the real libGL's glXSwapBuffers
         void* target = dlsym(RTLD_NEXT, "glXSwapBuffers");
-        TRACE_CALL("[Toolscreen] InstallRuntimeHook: dlsym done\n");
         if (!target) {
             void* libGL = dlopen("libGL.so.1", RTLD_LAZY | RTLD_NOLOAD);
             if (libGL) target = dlsym(libGL, "glXSwapBuffers");
         }
         if (!target) {
             HOOK_LOG("[Toolscreen] InstallRuntimeHook: glXSwapBuffers not found\n");
-            TRACE_CALL("[Toolscreen] InstallRuntimeHook: target not found, return\n");
             return;
         }
-        TRACE_CALL("[Toolscreen] InstallRuntimeHook: calling CreateHook\n");
-        void* trampoline = nullptr;
-        if (CreateHook(target, reinterpret_cast<void*>(hk_glXSwapBuffers), &trampoline) && trampoline) {
-            g_realSwapBuffers.store(reinterpret_cast<SwapBuffersFunc>(trampoline));
-            // Store active hook pointer for unpatch-repatch in hk_glXSwapBuffers
-            auto it = g_hooks.find(target);
-            if (it != g_hooks.end()) g_activeHook = &it->second;
-            HOOK_LOG("[Toolscreen] glXSwapBuffers hooked at %p trampoline=%p\n", target, trampoline);
-            TRACE_CALL("[Toolscreen] InstallRuntimeHook: hook OK\n");
-        } else {
-            HOOK_LOG("[Toolscreen] InstallRuntimeHook: CreateHook failed\n");
-            TRACE_CALL("[Toolscreen] InstallRuntimeHook: CreateHook FAILED\n");
+        HOOK_LOG("[Toolscreen] glXSwapBuffers at %p\n", target);
+
+        // Parse: mov 0x3f295(%rip),%rax  at target+4
+        // Opcode: 48 8B 05 XX XX XX XX (REX.W + MOV + [rip+disp32])
+        uint8_t* code = static_cast<uint8_t*>(target);
+        if (code[4] != 0x48 || code[5] != 0x8B || code[6] != 0x05) {
+            HOOK_LOG("[Toolscreen] Unexpected instruction at glXSwapBuffers+4\n");
+            return;
         }
+        int32_t disp = 0;
+        memcpy(&disp, &code[7], 4);
+        void** table_ptr = reinterpret_cast<void**>(code + 4 + 7 + disp);
+        void* table = *table_ptr;
+        HOOK_LOG("[Toolscreen] Dispatch table at %p (via offset 0x%x)\n", table, disp);
+
+        // Replace table entry for SwapBuffers (offset 0x118)
+        const ptrdiff_t kSwapBuffersOffset = 0x118;
+        void** slot = reinterpret_cast<void**>(static_cast<uint8_t*>(table) + kSwapBuffersOffset);
+        void* origFunc = *slot;
+
+        // Save original for calling
+        g_realSwapBuffers.store(reinterpret_cast<SwapBuffersFunc>(origFunc));
+        HOOK_LOG("[Toolscreen] Original SwapBuffers impl: %p\n", origFunc);
+
+        // Patch — data segment write, no mprotect on code needed
+        *slot = reinterpret_cast<void*>(hk_glXSwapBuffers);
+        HOOK_LOG("[Toolscreen] Dispatch table patched: %p → %p\n", origFunc, *slot);
+        TRACE_CALL("[Toolscreen] InstallRuntimeHook: dispatch hook OK\n");
     });
     TRACE_CALL("[Toolscreen] InstallRuntimeHook: exit\n");
 }
