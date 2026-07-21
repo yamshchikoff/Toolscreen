@@ -572,6 +572,11 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 
             ImGui::SetCurrentContext(g_imguiCtx);
+            ImGuiIO& io = ImGui::GetIO();
+            if (io.DisplaySize.x <= 0.0f) {
+                io.DisplaySize = ImVec2(1920.0f, 1080.0f);
+                io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
+            }
             X11Input::PollEvents();
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplX11_NewFrame();
