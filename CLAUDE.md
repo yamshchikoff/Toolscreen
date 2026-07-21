@@ -13,3 +13,12 @@
 - **fprintf(stderr) НЕ РАБОТАЕТ в Minecraft.** Всегда используй HOOK_LOG() или TS_LOG() — они пишут в файл /home/user/toolscreen.log. stderr Minecraft выкидывает.
 - **ТОЛЬКО ИНЖЕКТОР.** Никаких подмен Java-файлов, никаких LD_PRELOAD-обёрток. Только `sudo ./scripts/inject.sh`.
 - **Сборка всегда с `--parallel $(nproc)`.** `cmake --build out/build/linux-test --parallel $(nproc)`
+
+## Инжектор и отладка
+
+- **Краш происходит сразу после возврата в игру после инжекта.** Сообщения в логах о кадрах (Frame N) до возврата в игру не показательны — они от фонового рендера, а краш происходит на первом «настоящем» кадре после возврата в игру.
+- **Лог-файлы:** `/home/user/toolscreen.log` (HOOK_LOG, TS_LOG, X11_LOG), `/home/user/toolscreen_trace.log` (TRACE_CALL, TS_TRACE, DBG_TRACE).
+- **stderr не работает** — Minecraft/JVM его уничтожает. Все отладочные сообщения только в файлы логов.
+- **Хук должен работать на любой дистанции** — использовать двухшаговый подход: bridge-страница рядом с target (<2GB) для 5-байтового атомарного jmp rel32, в bridge — 14-байтовый absolute jump без ограничения дистанции.
+- **SIGSEGV в libnvidia-glcore.so** при вызове ImGui_ImplOpenGL3_RenderDrawData — даже с сохранением/восстановлением GL-стейта. Без RenderDrawData игра стабильна.
+- **Sodium** (оптимизатор рендера Minecraft) агрессивно кеширует GL-стейт и чувствителен к посторонним GL-вызовам.
