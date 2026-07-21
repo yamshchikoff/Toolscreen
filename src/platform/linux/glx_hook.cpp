@@ -583,6 +583,7 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplX11_NewFrame();
             ImGui::NewFrame();
+            ImGui::GetForegroundDrawList()->AddRect(ImVec2(100,100), ImVec2(300,200), IM_COL32(0,255,0,255));
             ImGui::Render();
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         }
