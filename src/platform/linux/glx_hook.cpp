@@ -560,39 +560,13 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             ImGui::End();
             ImGui::Render();
 
-            // Step-by-step GL test to find the crashing call inside RenderDrawData
-            TRACE_CALL("[Toolscreen] GL test: glUseProgram(0)\n");
-            glUseProgram(0);
+            // Flush all pending GL commands from Sodium before touching GL
+            TRACE_CALL("[Toolscreen] glFinish\n");
+            glFinish();
 
-            TRACE_CALL("[Toolscreen] GL test: glBindVertexArray(0)\n");
-            glBindVertexArray(0);
-
-            TRACE_CALL("[Toolscreen] GL test: glBindBuffer(ARRAY, 0)\n");
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-            TRACE_CALL("[Toolscreen] GL test: glBindBuffer(ELEMENT, 0)\n");
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-
-            TRACE_CALL("[Toolscreen] GL test: glActiveTexture(TEX0)\n");
-            glActiveTexture(GL_TEXTURE0);
-
-            TRACE_CALL("[Toolscreen] GL test: glBindTexture(TEX_2D, 0)\n");
-            glBindTexture(GL_TEXTURE_2D, 0);
-
-            TRACE_CALL("[Toolscreen] GL test: glEnable(BLEND)\n");
-            glEnable(GL_BLEND);
-
-            TRACE_CALL("[Toolscreen] GL test: glGenVertexArrays\n");
-            GLuint testVAO = 0;
-            glGenVertexArrays(1, &testVAO);
-
-            TRACE_CALL("[Toolscreen] GL test: glBindVertexArray(testVAO)\n");
-            glBindVertexArray(testVAO);
-
-            TRACE_CALL("[Toolscreen] GL test: glDeleteVertexArrays\n");
-            glDeleteVertexArrays(1, &testVAO);
-
-            TRACE_CALL("[Toolscreen] GL test: DONE\n");
+            TRACE_CALL("[Toolscreen] RenderDrawData\n");
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            TRACE_CALL("[Toolscreen] RenderDrawData done\n");
         }
         if (shouldLog) HOOK_LOG("[Toolscreen] Frame %d: GL state restored\n", g_frameCounter);
     }
