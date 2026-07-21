@@ -76,9 +76,11 @@ namespace {
 struct HookEntry {
     void* target;
     void* detour;
-    void* bridge;              // Trampoline page allocated near target (<2GB)
-    uint8_t backup[8];         // Original 8 bytes at target (for RestoreJump)
+    void* bridge;              // Near-target jump bridge (for >2GB)
+    void* trampoline;          // Callable original: backup bytes + jmp target+5
+    uint8_t backup[8];         // Original 8 bytes at target
     size_t bridgeSize;         // Size of bridge allocation
+    size_t trampolineSize;     // Size of trampoline allocation
     bool enabled;
 };
 
@@ -288,7 +290,7 @@ bool CreateHook(void* target, void* detour, void** original) {
 
     auto it = g_hooks.find(target);
     if (it != g_hooks.end()) {
-        if (original) *original = it->second.bridge;  // bridge = callable trampoline
+        if (original) *original = it->second.trampoline;
         return true;
     }
 
@@ -296,8 +298,6 @@ bool CreateHook(void* target, void* detour, void** original) {
     memset(&entry, 0, sizeof(entry));
     entry.target = target;
     entry.detour = detour;
-    entry.bridge = nullptr;
-    entry.bridgeSize = 0;
     entry.enabled = false;
 
     // Install the jump from target to detour (via bridge if >2GB)
@@ -306,12 +306,26 @@ bool CreateHook(void* target, void* detour, void** original) {
         return false;
     }
 
-    // Store bridge address as "trampoline" for CallRealSwapBuffers/Shutdown
-    // (bridge IS the trampoline — it jumps to the original function via abs jump)
-    entry.bridge = nullptr;  // Not needed; original called via dlsym(RTLD_NEXT)
+    // Create callable trampoline: [backup 5 bytes] [jmp rel32 to target+5]
+    // This allows calling the original function without hitting our own hook.
+    size_t trampSize = 64;
+    void* tramp = mmap(nullptr, trampSize, PROT_READ | PROT_WRITE | PROT_EXEC,
+                       MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (tramp != MAP_FAILED) {
+        memcpy(tramp, entry.backup, kJumpSize);
+        uint8_t* jmp = static_cast<uint8_t*>(tramp) + kJumpSize;
+        jmp[0] = 0xE9;
+        int64_t rel = (static_cast<uint8_t*>(target) + kJumpSize) - (jmp + 5);
+        int32_t rel32 = static_cast<int32_t>(rel);
+        memcpy(&jmp[1], &rel32, 4);
+        mprotect(tramp, trampSize, PROT_READ | PROT_EXEC);
+        entry.trampoline = tramp;
+        entry.trampolineSize = trampSize;
+    }
+
     entry.enabled = true;
 
-    if (original) *original = nullptr;  // Caller should use dlsym, not trampoline
+    if (original) *original = entry.trampoline;
     g_hooks[target] = entry;
     return true;
 }
@@ -456,9 +470,8 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     // glXSwapBuffers which should NOT re-enter our hook.
     static thread_local bool inHkSwap = false;
     if (inHkSwap) {
-        static SwapBuffersFunc s_real = nullptr;
-        if (!s_real) s_real = reinterpret_cast<SwapBuffersFunc>(dlsym(RTLD_NEXT, "glXSwapBuffers"));
-        if (s_real) s_real(dpy, drawable);
+        auto* realSwap = g_realSwapBuffers.load(std::memory_order_acquire);
+        if (realSwap) realSwap(dpy, drawable);
         return;
     }
     inHkSwap = true;
@@ -543,9 +556,8 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
         if (!glXGetCurrentContext()) {
             if (shouldLog) HOOK_LOG("[Toolscreen] Frame %d: no GL context, skipping\n", g_frameCounter);
             inHkSwap = false;
-            static SwapBuffersFunc s_fallbackSwap = nullptr;
-            if (!s_fallbackSwap) s_fallbackSwap = reinterpret_cast<SwapBuffersFunc>(dlsym(RTLD_NEXT, "glXSwapBuffers"));
-            if (s_fallbackSwap) s_fallbackSwap(dpy, drawable);
+            auto* realSwap = g_realSwapBuffers.load(std::memory_order_acquire);
+            if (realSwap) realSwap(dpy, drawable);
             return;
         }
 
@@ -583,13 +595,20 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
         if (shouldLog) HOOK_LOG("[Toolscreen] Frame %d: GL state restored\n", g_frameCounter);
     }
 
-    // Call the real glXSwapBuffers via RTLD_NEXT
-    static SwapBuffersFunc s_realSwap = nullptr;
-    if (!s_realSwap) {
-        s_realSwap = reinterpret_cast<SwapBuffersFunc>(dlsym(RTLD_NEXT, "glXSwapBuffers"));
-    }
+    // Call real glXSwapBuffers via TRAMPOLINE (not dlsym RTLD_NEXT!).
+    // dlsym(RTLD_NEXT) returns the patched libGL function which has our
+    // jump → infinite recursion. The trampoline executes the original
+    // first 5 bytes then jumps to target+5 — bypassing our hook.
     inHkSwap = false;
-    if (s_realSwap) s_realSwap(dpy, drawable);
+    auto* realSwap = g_realSwapBuffers.load(std::memory_order_acquire);
+    if (realSwap) {
+        realSwap(dpy, drawable);
+    } else {
+        // Fallback (should never happen if hook installed OK)
+        static SwapBuffersFunc s_fallback = nullptr;
+        if (!s_fallback) s_fallback = reinterpret_cast<SwapBuffersFunc>(dlsym(RTLD_NEXT, "glXSwapBuffers"));
+        if (s_fallback) s_fallback(dpy, drawable);
+    }
     inHkSwap = false;
 }
 
@@ -657,8 +676,10 @@ void InstallRuntimeHook() {
             return;
         }
         TRACE_CALL("[Toolscreen] InstallRuntimeHook: calling CreateHook\n");
-        if (CreateHook(target, reinterpret_cast<void*>(hk_glXSwapBuffers), nullptr)) {
-            HOOK_LOG("[Toolscreen] glXSwapBuffers hooked at %p\n", target);
+        void* trampoline = nullptr;
+        if (CreateHook(target, reinterpret_cast<void*>(hk_glXSwapBuffers), &trampoline) && trampoline) {
+            g_realSwapBuffers.store(reinterpret_cast<SwapBuffersFunc>(trampoline));
+            HOOK_LOG("[Toolscreen] glXSwapBuffers hooked at %p trampoline=%p\n", target, trampoline);
             TRACE_CALL("[Toolscreen] InstallRuntimeHook: hook OK\n");
         } else {
             HOOK_LOG("[Toolscreen] InstallRuntimeHook: CreateHook failed\n");
@@ -698,6 +719,9 @@ void Shutdown() {
     for (auto& pair : g_hooks) {
         if (pair.second.bridge) {
             munmap(pair.second.bridge, pair.second.bridgeSize);
+        }
+        if (pair.second.trampoline) {
+            munmap(pair.second.trampoline, pair.second.trampolineSize);
         }
         if (pair.second.enabled) {
             RestoreJump(pair.second.target, pair.second.backup);
