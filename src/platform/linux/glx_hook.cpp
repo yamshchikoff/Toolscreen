@@ -88,6 +88,12 @@ std::atomic<bool> g_initialized{false};
 std::atomic<bool> g_hooksEnabled{false};
 std::atomic<bool> g_glewReady{false};
 
+// Trace helper (HOOK_LOG is not visible inside anonymous namespace)
+static void DBG_TRACE(const char* msg) {
+    int fd = open("/home/user/toolscreen_trace.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd >= 0) { write(fd, msg, strlen(msg)); close(fd); }
+}
+
 constexpr size_t kJumpSize = 5;  // jmp rel32 = 5 bytes
 constexpr size_t kAtomSize  = 8;  // atomic write: 8 bytes (covers 5-byte jump)
 
@@ -113,10 +119,17 @@ void InstallJump(void* target, void* destination, uint8_t* backup) {
     // Back up 8 original bytes (need 8 for atomic write alignment)
     memcpy(backup, target, kAtomSize);
 
+    char buf[256];
+    int n = snprintf(buf, sizeof(buf),
+        "[Toolscreen] InstallJump: target=%p dest=%p dist=%ld\n",
+        target, destination,
+        (long)(static_cast<uint8_t*>(destination) - static_cast<uint8_t*>(target)));
+    DBG_TRACE(buf);
+
     // Make page writable (keep EXEC — other threads must not fault)
     size_t span = PageSpan(target, kJumpSize);
     if (mprotect(PageAlign(target), span, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
-        //HOOK_LOG("[Toolscreen] InstallJump: mprotect RWX failed for %p: %s\n", target, strerror(errno));
+        DBG_TRACE("[Toolscreen] InstallJump: mprotect RWX FAILED\n");
         return;
     }
 
@@ -126,7 +139,7 @@ void InstallJump(void* target, void* destination, uint8_t* backup) {
     newBytes[0] = 0xE9;                         // JMP rel32
     int64_t rel = static_cast<uint8_t*>(destination) - (static_cast<uint8_t*>(target) + 5);
     if (rel < INT32_MIN || rel > INT32_MAX) {
-        //HOOK_LOG("[Toolscreen] InstallJump: target too far (>2GB), need absolute jump\n");
+        DBG_TRACE("[Toolscreen] InstallJump: distance >2GB, cannot use jmp rel32\n");
         mprotect(PageAlign(target), span, PROT_READ | PROT_EXEC);
         return;
     }
@@ -138,8 +151,17 @@ void InstallJump(void* target, void* destination, uint8_t* backup) {
     memcpy(&newVal, newBytes, 8);
     __atomic_store_n(reinterpret_cast<uint64_t*>(target), newVal, __ATOMIC_SEQ_CST);
 
+    // Verify the write
+    uint64_t verifyVal;
+    memcpy(&verifyVal, target, 8);
+    n = snprintf(buf, sizeof(buf),
+        "[Toolscreen] InstallJump: wrote %lx readback %lx match=%d\n",
+        newVal, verifyVal, (newVal == verifyVal ? 1 : 0));
+    DBG_TRACE(buf);
+
     // Restore page protection (remove W)
     mprotect(PageAlign(target), span, PROT_READ | PROT_EXEC);
+    DBG_TRACE("[Toolscreen] InstallJump: done\n");
 }
 
 // Write the original 8 bytes back to `target` (reverse of InstallJump).
@@ -398,6 +420,7 @@ void glBlitFramebuffer(GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1,
 
 void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     PROFILE_SCOPE("glXSwapBuffers");
+    TRACE_CALL("[Toolscreen] hk_glXSwapBuffers: ENTER\n");
 
     // Recursion guard: if we called realSwap, it calls the original
     // glXSwapBuffers which should NOT re-enter our hook.
