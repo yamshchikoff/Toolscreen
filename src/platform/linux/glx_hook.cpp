@@ -583,15 +583,14 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             X11Input::PollEvents();
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplX11_NewFrame();
-            // Check ImGui shader on frame 1
-            if (g_frameCounter == 1) {
-                auto* bd = ImGui_ImplOpenGL3_GetBackendData();
-                HOOK_LOG("[Toolscreen] ImGui ShaderHandle=%u\n", bd ? bd->ShaderHandle : 0);
-            }
             ImGui::NewFrame();
             ImGui::GetForegroundDrawList()->AddRect(ImVec2(100,100), ImVec2(300,200), IM_COL32(0,255,0,255));
             ImGui::Render();
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            if (g_frameCounter == 1) {
+                GLenum err = glGetError();
+                HOOK_LOG("[Toolscreen] ImGui GL error: 0x%x\n", err);
+            }
 
             // Red quad AFTER — verify FBO still bound
             static GLuint rq_prog = 0, rq_vao = 0;
