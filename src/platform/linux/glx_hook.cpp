@@ -505,10 +505,23 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     }
     inHkSwap = true;
 
-    // EXPERIMENT: absolutely nothing — just return.
-    // If this crashes → the jump/bridge mechanism itself is broken.
+    // Step 1: Lazy init (X11, config — NO GLEW, NO ImGui)
+    ToolscreenLazyInit();
+
+    // Step 2: Call real glXSwapBuffers via RTLD_DEFAULT.
+    // Keep inHkSwap=true so guard catches re-entry (if dlsym resolves
+    // to our patched function).
+    static SwapBuffersFunc s_real = nullptr;
+    if (!s_real) {
+        s_real = reinterpret_cast<SwapBuffersFunc>(dlsym(RTLD_DEFAULT, "glXSwapBuffers"));
+        HOOK_LOG("[Toolscreen] dlsym(RTLD_DEFAULT) = %p, hk_glXSwapBuffers=%p\n",
+                (void*)s_real, (void*)hk_glXSwapBuffers);
+    }
+    if (s_real && s_real != reinterpret_cast<SwapBuffersFunc>(hk_glXSwapBuffers)) {
+        inHkSwap = true;  // block re-entry
+        s_real(dpy, drawable);
+    }
     inHkSwap = false;
-    return;
 
     // Lazy GLEW initialization on first call (requires an active GL context)
     static std::atomic<GLXContext> s_glewContext{nullptr};
