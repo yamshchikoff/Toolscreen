@@ -76,6 +76,7 @@ else()
         ${TOOLSCREEN_PLATFORM_DIR}/x11_display.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/x11_window.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/glx_hook.cpp
+        ${TOOLSCREEN_PLATFORM_DIR}/hotkey_detect.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/x11_input.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/x11_capture.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/x11_cursor.cpp
@@ -256,8 +257,8 @@ if(NOT glew_POPULATED)
         ${glew_SOURCE_DIR}/src/glew.c
     )
 
-    target_include_directories(toolscreen_glew PUBLIC ${glew_SOURCE_DIR}/include)
-    target_compile_definitions(toolscreen_glew PUBLIC GLEW_STATIC)
+    target_include_directories(toolscreen_glew PUBLIC ${glew_SOURCE_DIR}/include ${OPENGL_INCLUDE_DIR} ${X11_X11_INCLUDE_PATH} ${X11_Xlib_INCLUDE_PATH})
+    target_compile_definitions(toolscreen_glew PUBLIC GLEW_STATIC GLEW_NO_GLU)
 
     set_target_properties(toolscreen_glew PROPERTIES
         MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
@@ -1544,4 +1545,38 @@ foreach(test_case IN LISTS TOOLSCREEN_GAME_STATE_SOURCE_TEST_CASES)
 endforeach()
 
 endif() # WIN32 (liblogger + packaging + tests)
+
+# Linux-only tests
+if(UNIX AND NOT APPLE)
+    add_executable(toolscreen_hotkey_detection_tests
+        tests/hotkey_detection_tests.cpp
+        ${TOOLSCREEN_PLATFORM_DIR}/hotkey_detect.cpp
+    )
+
+    target_include_directories(toolscreen_hotkey_detection_tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+
+    target_compile_definitions(toolscreen_hotkey_detection_tests PRIVATE
+        NOMINMAX
+    )
+
+    toolscreen_configure_target_outputs(toolscreen_hotkey_detection_tests)
+    toolscreen_enable_release_symbols(toolscreen_hotkey_detection_tests)
+
+    set(TOOLSCREEN_HOTKEY_DETECTION_TEST_CASES
+        z_is_hotkey
+        j_is_hotkey
+        leftalt_is_hotkey
+        a_is_not_hotkey
+        zero_is_not_hotkey
+    )
+
+    foreach(test_case IN LISTS TOOLSCREEN_HOTKEY_DETECTION_TEST_CASES)
+        add_test(
+            NAME toolscreen_hotkey_detection_${test_case}
+            COMMAND $<TARGET_FILE:toolscreen_hotkey_detection_tests> --run ${test_case}
+        )
+    endforeach()
+endif()
 

@@ -10,6 +10,7 @@
 #include "glx_hook.h"
 #include "x11_display.h"
 #include "platform/linux/x11_input.h"
+#include "platform/linux/hotkey_detect.h"
 #include "gui/imgui_impl_x11.h"
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
@@ -101,6 +102,11 @@ std::atomic<bool> g_glewReady{false};
 static void DBG_TRACE(const char* msg) {
     int fd = open("/home/user/toolscreen_trace.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (fd >= 0) { write(fd, msg, strlen(msg)); close(fd); }
+}
+// Hotkey log helper — пишет в toolscreen.log из анонимного namespace
+static void HOTKEY_LOG(const char* fmt, ...) {
+    FILE* f = fopen("/home/user/toolscreen.log", "a");
+    if (f) { va_list va; va_start(va, fmt); vfprintf(f, fmt, va); va_end(va); fclose(f); }
 }
 
 void* PageAlign(void* addr) {
@@ -244,8 +250,13 @@ std::atomic<bool> g_inputWired{false};
 bool RouteX11EventToImGui(const X11Input::InputEvent& ev) {
     using ET = X11Input::EventType;
     switch (ev.type) {
-    case ET::KeyDown:
+    case ET::KeyDown: {
+        if (IsHotkeyVkCode(ev.vkCode)) {
+            HOTKEY_LOG("[Toolscreen] HOTKEY: vk=0x%X scanCode=%u\n",
+                       ev.vkCode, ev.scanCode);
+        }
         return ImGui_ImplX11_HandleKeyEvent(ev.scanCode, true, 0);
+    }
     case ET::KeyUp:
         return ImGui_ImplX11_HandleKeyEvent(ev.scanCode, false, 0);
     case ET::MouseDown: {
