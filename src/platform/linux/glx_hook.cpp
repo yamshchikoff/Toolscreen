@@ -573,72 +573,7 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
             glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 
-            // ImGui FIRST (before our GL calls pollute state)
-            ImGui::SetCurrentContext(g_imguiCtx);
-            ImGuiIO& io = ImGui::GetIO();
-            if (io.DisplaySize.x <= 0.0f) {
-                io.DisplaySize = ImVec2(1920.0f, 1080.0f);
-                io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
-            }
-            X11Input::PollEvents();
-            ImGui_ImplOpenGL3_NewFrame();
-            ImGui_ImplX11_NewFrame();
-            ImGui::NewFrame();
-            ImGui::GetForegroundDrawList()->AddRect(ImVec2(100,100), ImVec2(300,200), IM_COL32(0,255,0,255));
-            ImGui::Render();
-            // Render ImGui draw data with OUR shader (not ImGui's)
-            ImDrawData* dd = ImGui::GetDrawData();
-            if (dd && dd->CmdListsCount > 0) {
-                for (int i = 0; i < dd->CmdListsCount; i++) {
-                    ImDrawList* dl = dd->CmdLists[i];
-                    // Upload vertices/indices to a temporary buffer and draw
-                    GLuint tmp_vbo, tmp_ebo, tmp_vao;
-                    glGenVertexArrays(1, &tmp_vao);
-                    glGenBuffers(1, &tmp_vbo);
-                    glGenBuffers(1, &tmp_ebo);
-                    glBindVertexArray(tmp_vao);
-                    glBindBuffer(GL_ARRAY_BUFFER, tmp_vbo);
-                    glBufferData(GL_ARRAY_BUFFER, dl->VtxBuffer.Size * sizeof(ImDrawVert), dl->VtxBuffer.Data, GL_STREAM_DRAW);
-                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, tmp_ebo);
-                    glBufferData(GL_ELEMENT_ARRAY_BUFFER, dl->IdxBuffer.Size * sizeof(ImDrawIdx), dl->IdxBuffer.Data, GL_STREAM_DRAW);
-                    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(ImDrawVert), (void*)offsetof(ImDrawVert, pos));
-                    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(ImDrawVert), (void*)offsetof(ImDrawVert, uv));
-                    glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(ImDrawVert), (void*)offsetof(ImDrawVert, col));
-                    glEnableVertexAttribArray(0);
-                    glEnableVertexAttribArray(1);
-                    glEnableVertexAttribArray(2);
-                    // Use a simple shader that just outputs the vertex color
-                    // Ortho projection: pixel (0..w, 0..h) → NDC (-1..1, 1..-1)
-                    float w = io.DisplaySize.x, h = io.DisplaySize.y;
-                    float proj[4][4] = {
-                        {2/w, 0,    0, -1},
-                        {0,  -2/h,  0,  1},
-                        {0,   0,   -1,  0},
-                        {0,   0,    0,  1}
-                    };
-                    static GLuint ig_prog = 0;
-                    if (!ig_prog) {
-                        const char* vs = "#version 330\nlayout(location=0)in vec2 p;layout(location=2)in vec4 c;uniform mat4 Proj;out vec4 vc;void main(){gl_Position=Proj*vec4(p,0,1);vc=c;}";
-                        const char* fs = "#version 330\nin vec4 vc;out vec4 fc;void main(){fc=vc;}";
-                        GLuint vsi = glCreateShader(GL_VERTEX_SHADER); glShaderSource(vsi, 1, &vs, nullptr); glCompileShader(vsi);
-                        GLuint fsi = glCreateShader(GL_FRAGMENT_SHADER); glShaderSource(fsi, 1, &fs, nullptr); glCompileShader(fsi);
-                        ig_prog = glCreateProgram(); glAttachShader(ig_prog, vsi); glAttachShader(ig_prog, fsi); glLinkProgram(ig_prog);
-                        glDeleteShader(vsi); glDeleteShader(fsi);
-                    }
-                    glUseProgram(ig_prog);
-                    glUniformMatrix4fv(glGetUniformLocation(ig_prog, "Proj"), 1, GL_FALSE, &proj[0][0]);
-                    glDrawElements(GL_TRIANGLES, dl->IdxBuffer.Size, sizeof(ImDrawIdx) == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT, nullptr);
-                    glBindVertexArray(0);
-                    glDeleteVertexArrays(1, &tmp_vao);
-                    glDeleteBuffers(1, &tmp_vbo);
-                    glDeleteBuffers(1, &tmp_ebo);
-                }
-            }
-            if (g_frameCounter == 1) {
-                HOOK_LOG("[Toolscreen] Rendered %d cmd lists with our shader\n", dd ? dd->CmdListsCount : 0);
-            }
-
-            // Red quad AFTER — verify FBO still bound
+            // Red quad FIRST (background)
             static GLuint rq_prog = 0, rq_vao = 0;
             if (!rq_prog) {
                 const char* vs = "#version 330\nlayout(location=0)in vec2 p;void main(){gl_Position=vec4(p,0,1);}";
@@ -662,6 +597,52 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             glUseProgram(rq_prog); glBindVertexArray(rq_vao);
             glDrawArrays(GL_TRIANGLES, 0, 6);
             glBindVertexArray(0); glUseProgram(0);
+
+            // ImGui ON TOP of red quad
+            ImGui::SetCurrentContext(g_imguiCtx);
+            ImGuiIO& io = ImGui::GetIO();
+            if (io.DisplaySize.x <= 0.0f) {
+                io.DisplaySize = ImVec2(1920.0f, 1080.0f);
+                io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
+            }
+            X11Input::PollEvents();
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplX11_NewFrame();
+            ImGui::NewFrame();
+            ImGui::GetForegroundDrawList()->AddRect(ImVec2(100,100), ImVec2(300,200), IM_COL32(0,255,0,255));
+            ImGui::Render();
+            ImDrawData* dd = ImGui::GetDrawData();
+            if (dd && dd->CmdListsCount > 0) {
+                for (int i = 0; i < dd->CmdListsCount; i++) {
+                    ImDrawList* dl = dd->CmdLists[i];
+                    GLuint tmp_vbo, tmp_ebo, tmp_vao;
+                    glGenVertexArrays(1, &tmp_vao); glGenBuffers(1, &tmp_vbo); glGenBuffers(1, &tmp_ebo);
+                    glBindVertexArray(tmp_vao);
+                    glBindBuffer(GL_ARRAY_BUFFER, tmp_vbo);
+                    glBufferData(GL_ARRAY_BUFFER, dl->VtxBuffer.Size * sizeof(ImDrawVert), dl->VtxBuffer.Data, GL_STREAM_DRAW);
+                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, tmp_ebo);
+                    glBufferData(GL_ELEMENT_ARRAY_BUFFER, dl->IdxBuffer.Size * sizeof(ImDrawIdx), dl->IdxBuffer.Data, GL_STREAM_DRAW);
+                    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(ImDrawVert), (void*)offsetof(ImDrawVert, pos));
+                    glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(ImDrawVert), (void*)offsetof(ImDrawVert, col));
+                    glEnableVertexAttribArray(0); glEnableVertexAttribArray(2);
+                    float W = io.DisplaySize.x, H = io.DisplaySize.y;
+                    float proj[4][4] = {{2/W,0,0,-1},{0,-2/H,0,1},{0,0,-1,0},{0,0,0,1}};
+                    static GLuint igp = 0;
+                    if (!igp) {
+                        const char* vs = "#version 330\nlayout(location=0)in vec2 p;layout(location=2)in vec4 c;uniform mat4 P;out vec4 vc;void main(){gl_Position=P*vec4(p,0,1);vc=c;}";
+                        const char* fs = "#version 330\nin vec4 vc;out vec4 fc;void main(){fc=vc;}";
+                        GLuint vsi = glCreateShader(GL_VERTEX_SHADER); glShaderSource(vsi, 1, &vs, nullptr); glCompileShader(vsi);
+                        GLuint fsi = glCreateShader(GL_FRAGMENT_SHADER); glShaderSource(fsi, 1, &fs, nullptr); glCompileShader(fsi);
+                        igp = glCreateProgram(); glAttachShader(igp, vsi); glAttachShader(igp, fsi); glLinkProgram(igp);
+                        glDeleteShader(vsi); glDeleteShader(fsi);
+                    }
+                    glUseProgram(igp);
+                    glUniformMatrix4fv(glGetUniformLocation(igp, "P"), 1, GL_FALSE, &proj[0][0]);
+                    glDrawElements(GL_TRIANGLES, dl->IdxBuffer.Size, sizeof(ImDrawIdx) == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT, nullptr);
+                    glBindVertexArray(0);
+                    glDeleteVertexArrays(1, &tmp_vao); glDeleteBuffers(1, &tmp_vbo); glDeleteBuffers(1, &tmp_ebo);
+                }
+            }
         }
     }
 
