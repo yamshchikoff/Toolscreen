@@ -573,6 +573,31 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
             glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 
+            // Red quad on frame 1 only — verify GL rendering works
+            static GLuint rq_prog = 0, rq_vao = 0;
+            if (!rq_prog) {
+                const char* vs = "#version 330\nlayout(location=0)in vec2 p;void main(){gl_Position=vec4(p,0,1);}";
+                const char* fs = "#version 330\nout vec4 c;void main(){c=vec4(1,0,0,1);}";
+                GLuint vs_id = glCreateShader(GL_VERTEX_SHADER);
+                glShaderSource(vs_id, 1, &vs, nullptr); glCompileShader(vs_id);
+                GLuint fs_id = glCreateShader(GL_FRAGMENT_SHADER);
+                glShaderSource(fs_id, 1, &fs, nullptr); glCompileShader(fs_id);
+                rq_prog = glCreateProgram();
+                glAttachShader(rq_prog, vs_id); glAttachShader(rq_prog, fs_id);
+                glLinkProgram(rq_prog);
+                glDeleteShader(vs_id); glDeleteShader(fs_id);
+                GLuint rq_vbo;
+                glGenVertexArrays(1, &rq_vao); glGenBuffers(1, &rq_vbo);
+                float v[] = {-0.5f,-0.5f, 0.5f,-0.5f, 0.5f,0.5f, -0.5f,-0.5f, 0.5f,0.5f, -0.5f,0.5f};
+                glBindVertexArray(rq_vao); glBindBuffer(GL_ARRAY_BUFFER, rq_vbo);
+                glBufferData(GL_ARRAY_BUFFER, sizeof(v), v, GL_STATIC_DRAW);
+                glVertexAttribPointer(0,2,GL_FLOAT,GL_FALSE,0,nullptr);
+                glEnableVertexAttribArray(0); glBindVertexArray(0);
+            }
+            glUseProgram(rq_prog); glBindVertexArray(rq_vao);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            glBindVertexArray(0); glUseProgram(0);
+
             ImGui::SetCurrentContext(g_imguiCtx);
             ImGuiIO& io = ImGui::GetIO();
             if (io.DisplaySize.x <= 0.0f) {
@@ -585,12 +610,7 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             ImGui::NewFrame();
             ImGui::GetForegroundDrawList()->AddRect(ImVec2(100,100), ImVec2(300,200), IM_COL32(0,255,0,255));
             ImGui::Render();
-            ImDrawData* dd = ImGui::GetDrawData();
-            if (g_frameCounter == 1) {
-                HOOK_LOG("[Toolscreen] DrawData: valid=%d, cmd_lists=%d, vtx=%d, idx=%d\n",
-                    dd->Valid ? 1 : 0, dd->CmdListsCount, dd->TotalVtxCount, dd->TotalIdxCount);
-            }
-            ImGui_ImplOpenGL3_RenderDrawData(dd);
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         }
     }
 
