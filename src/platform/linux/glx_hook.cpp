@@ -566,7 +566,12 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
 
         if (shouldLog) HOOK_LOG("[Toolscreen] Frame %d: ImGui frame setup\n", g_frameCounter);
         {
+            // Sodium may have a PBO bound — glTexImage2D would interpret
+            // ImGui's pixels pointer as a PBO offset → SIGSEGV.
+            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
             glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+            glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
+            glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
             glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 
             ImGui::SetCurrentContext(g_imguiCtx);
