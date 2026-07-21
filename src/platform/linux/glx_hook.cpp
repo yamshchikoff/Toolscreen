@@ -521,6 +521,7 @@ void glBlitFramebuffer(GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1,
 static int (*real_XNextEvent)(Display*, XEvent*) = nullptr;
 static std::once_flag g_xnextEventOnceFlag;
 
+__attribute__((used))
 int XNextEvent(Display* display, XEvent* event_return) {
     std::call_once(g_xnextEventOnceFlag, []() {
         real_XNextEvent = reinterpret_cast<int (*)(Display*, XEvent*)>(
