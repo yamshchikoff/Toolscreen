@@ -565,20 +565,10 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
         }
 
         if (g_frameCounter == 1) {
-            HOOK_LOG("[Toolscreen] Frame 1: testing 10 GL calls\n");
-            glUseProgram(0);
-            glBindVertexArray(0);
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, 0);
-            glEnable(GL_BLEND);
-            GLuint testVAO = 0;
-            glGenVertexArrays(1, &testVAO);
-            glBindVertexArray(testVAO);
-            glDeleteVertexArrays(1, &testVAO);
-            glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-            HOOK_LOG("[Toolscreen] Frame 1: all 10 GL calls OK\n");
+            HOOK_LOG("[Toolscreen] Frame 1: testing glClear\n");
+            glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+            HOOK_LOG("[Toolscreen] Frame 1: glClear OK\n");
         }
     }
 
