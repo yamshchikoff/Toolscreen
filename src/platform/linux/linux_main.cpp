@@ -268,7 +268,11 @@ void ResetAllHotkeySecondaryModes() {}
 void ResetAllHotkeySecondaryModes(const Config&) {}
 
 bool BlitFramebufferDirect(GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLbitfield, GLenum) { return false; }
-void BindTextureDirect(GLenum, GLuint) {}
+void BindTextureDirect(GLenum target, GLuint texture) {
+    // Linux: real implementation — gloverlay::ScopedState and render code
+    // rely on this to restore texture bindings after rendering.
+    glBindTexture(target, texture);
+}
 void InvalidateTrackedGameTextureId(bool, bool) {}
 GLuint GetObsCaptureTexture() { return 0; }
 
