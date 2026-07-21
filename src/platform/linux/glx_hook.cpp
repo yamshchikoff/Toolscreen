@@ -559,7 +559,9 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             ImGui::Text("Injector OK");
             ImGui::End();
             ImGui::Render();
-            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            // TEMPORARY: skip GL rendering to isolate crash source
+            // ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            HOOK_LOG("[Toolscreen] Frame %d: RenderDrawData SKIPPED\n", g_frameCounter);
         }
         if (shouldLog) HOOK_LOG("[Toolscreen] Frame %d: GL state restored\n", g_frameCounter);
     }
