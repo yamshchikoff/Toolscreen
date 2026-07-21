@@ -551,6 +551,14 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
 
         if (shouldLog) HOOK_LOG("[Toolscreen] Frame %d: rendering ImGui\n", g_frameCounter);
         {
+            // Drain the GPU pipeline before touching GL state.
+            // Sodium may have pending compute shaders or indirect draws
+            // that leave the GPU in a state incompatible with our
+            // immediate-mode ImGui rendering.
+            TRACE_CALL("[Toolscreen] glFinish\n");
+            glFinish();
+            TRACE_CALL("[Toolscreen] glFinish done\n");
+
             gloverlay::ScopedState glState;
 
             ImGui::SetCurrentContext(g_imguiCtx);
