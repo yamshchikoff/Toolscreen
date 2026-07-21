@@ -585,7 +585,12 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             ImGui::NewFrame();
             ImGui::GetForegroundDrawList()->AddRect(ImVec2(100,100), ImVec2(300,200), IM_COL32(0,255,0,255));
             ImGui::Render();
-            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            ImDrawData* dd = ImGui::GetDrawData();
+            if (g_frameCounter == 1) {
+                HOOK_LOG("[Toolscreen] DrawData: valid=%d, cmd_lists=%d, vtx=%d, idx=%d\n",
+                    dd->Valid ? 1 : 0, dd->CmdListsCount, dd->TotalVtxCount, dd->TotalIdxCount);
+            }
+            ImGui_ImplOpenGL3_RenderDrawData(dd);
         }
     }
 
