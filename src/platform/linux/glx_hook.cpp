@@ -583,12 +583,10 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplX11_NewFrame();
             ImGui::NewFrame();
-            ImGui::Begin("Toolscreen");
-            ImGui::Text("Injector OK");
-            ImGui::End();
+            // NO Begin/End — empty draw list
             ImGui::Render();
 
-            TRACE_CALL("[Toolscreen] RenderDrawData\n");
+            TRACE_CALL("[Toolscreen] RenderDrawData (empty)\n");
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
             TRACE_CALL("[Toolscreen] RenderDrawData done\n");
         }
