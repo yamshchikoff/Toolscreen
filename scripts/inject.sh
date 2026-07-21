@@ -26,9 +26,16 @@ fi
 
 echo "PID: $PID"
 
-# Включаем coredump для процесса (нужен для отладки крашей)
+# Включаем coredump для процесса
 prlimit --pid "$PID" --core=unlimited
-echo "Core dumps enabled"
+
+# Сохраняем и заменяем core_pattern (apport отбрасывает пользовательские корки)
+OLD_PATTERN=$(cat /proc/sys/kernel/core_pattern)
+echo "/tmp/core.%p.%t" > /proc/sys/kernel/core_pattern
+echo "Core dumps enabled → /tmp/core.*"
+
+# Восстанавливаем core_pattern при выходе
+trap "echo '$OLD_PATTERN' > /proc/sys/kernel/core_pattern 2>/dev/null" EXIT
 
 echo "Инжект..."
 
