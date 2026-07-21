@@ -596,20 +596,9 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
         }
     }
 
-    // Call real glXSwapBuffers: get function pointer directly from
-    // libGL.so.1 handle (bypasses our patched bytes). Keep inHkSwap=true
-    // so the recursion guard catches re-entry and does unpatch+call.
-    inHkSwap = true;  // block re-entry in case dlsym resolves to patched func
-    static SwapBuffersFunc s_libglSwap = nullptr;
-    if (!s_libglSwap) {
-        void* libgl = dlopen("libGL.so.1", RTLD_LAZY | RTLD_NOLOAD);
-        if (libgl) s_libglSwap = reinterpret_cast<SwapBuffersFunc>(dlsym(libgl, "glXSwapBuffers"));
-    }
-    if (s_libglSwap) {
-        s_libglSwap(dpy, drawable);
-    }
-    // If we get here, the swap went through without re-entering our hook.
-    // (Either dlsym returned a non-patched address, or recursion guard handled it.)
+    // EXPERIMENT: don't call real glXSwapBuffers at all.
+    // This tests whether mprotect in the guard path is the crash source.
+    // Game will appear frozen, but if it doesn't crash → mprotect is the problem.
     inHkSwap = false;
 }
 
