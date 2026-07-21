@@ -588,6 +588,10 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             ImGui::Render();
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
             if (g_frameCounter == 1) {
+                ImGuiIO& ioo = ImGui::GetIO();
+                HOOK_LOG("[Toolscreen] DisplaySize=%.0fx%.0f scale=%.1fx%.1f\n",
+                    ioo.DisplaySize.x, ioo.DisplaySize.y,
+                    ioo.DisplayFramebufferScale.x, ioo.DisplayFramebufferScale.y);
                 GLenum err = glGetError();
                 HOOK_LOG("[Toolscreen] ImGui GL error: 0x%x\n", err);
             }
