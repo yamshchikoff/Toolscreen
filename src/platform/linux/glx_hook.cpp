@@ -527,9 +527,10 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             ImGui_ImplX11_NewFrame();
             TRACE_CALL("[Toolscreen] NewFrame\n");
             ImGui::NewFrame();
-            static bool showDemo = true;
-            TRACE_CALL("[Toolscreen] ShowDemoWindow\n");
-            ImGui::ShowDemoWindow(&showDemo);
+            TRACE_CALL("[Toolscreen] Begin\n");
+            ImGui::Begin("Toolscreen");
+            ImGui::Text("Injector OK");
+            ImGui::End();
             TRACE_CALL("[Toolscreen] Render\n");
             ImGui::Render();
             TRACE_CALL("[Toolscreen] RenderDrawData\n");
