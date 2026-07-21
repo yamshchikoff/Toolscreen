@@ -573,32 +573,7 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
             glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 
-            // Red quad FIRST (background)
-            static GLuint rq_prog = 0, rq_vao = 0;
-            if (!rq_prog) {
-                const char* vs = "#version 330\nlayout(location=0)in vec2 p;void main(){gl_Position=vec4(p,0,1);}";
-                const char* fs = "#version 330\nout vec4 c;void main(){c=vec4(1,0,0,1);}";
-                GLuint vs_id = glCreateShader(GL_VERTEX_SHADER);
-                glShaderSource(vs_id, 1, &vs, nullptr); glCompileShader(vs_id);
-                GLuint fs_id = glCreateShader(GL_FRAGMENT_SHADER);
-                glShaderSource(fs_id, 1, &fs, nullptr); glCompileShader(fs_id);
-                rq_prog = glCreateProgram();
-                glAttachShader(rq_prog, vs_id); glAttachShader(rq_prog, fs_id);
-                glLinkProgram(rq_prog);
-                glDeleteShader(vs_id); glDeleteShader(fs_id);
-                GLuint rq_vbo;
-                glGenVertexArrays(1, &rq_vao); glGenBuffers(1, &rq_vbo);
-                float v[] = {-0.5f,-0.5f, 0.5f,-0.5f, 0.5f,0.5f, -0.5f,-0.5f, 0.5f,0.5f, -0.5f,0.5f};
-                glBindVertexArray(rq_vao); glBindBuffer(GL_ARRAY_BUFFER, rq_vbo);
-                glBufferData(GL_ARRAY_BUFFER, sizeof(v), v, GL_STATIC_DRAW);
-                glVertexAttribPointer(0,2,GL_FLOAT,GL_FALSE,0,nullptr);
-                glEnableVertexAttribArray(0); glBindVertexArray(0);
-            }
-            glUseProgram(rq_prog); glBindVertexArray(rq_vao);
-            glDrawArrays(GL_TRIANGLES, 0, 6);
-            glBindVertexArray(0); glUseProgram(0);
-
-            // ImGui ON TOP of red quad
+            // Pure ImGui test — no red quad
             ImGui::SetCurrentContext(g_imguiCtx);
             ImGuiIO& io = ImGui::GetIO();
             if (io.DisplaySize.x <= 0.0f) {
@@ -626,13 +601,11 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             if (dd && dd->CmdListsCount > 0) {
                 for (int i = 0; i < dd->CmdListsCount; i++) {
                     ImDrawList* dl = dd->CmdLists[i];
-                    GLuint tmp_vbo, tmp_ebo, tmp_vao;
-                    glGenVertexArrays(1, &tmp_vao); glGenBuffers(1, &tmp_vbo); glGenBuffers(1, &tmp_ebo);
+                    GLuint tmp_vbo, tmp_vao;
+                    glGenVertexArrays(1, &tmp_vao); glGenBuffers(1, &tmp_vbo);
                     glBindVertexArray(tmp_vao);
                     glBindBuffer(GL_ARRAY_BUFFER, tmp_vbo);
                     glBufferData(GL_ARRAY_BUFFER, dl->VtxBuffer.Size * sizeof(ImDrawVert), dl->VtxBuffer.Data, GL_STREAM_DRAW);
-                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, tmp_ebo);
-                    glBufferData(GL_ELEMENT_ARRAY_BUFFER, dl->IdxBuffer.Size * sizeof(ImDrawIdx), dl->IdxBuffer.Data, GL_STREAM_DRAW);
                     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(ImDrawVert), (void*)offsetof(ImDrawVert, pos));
                     glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(ImDrawVert), (void*)offsetof(ImDrawVert, col));
                     glEnableVertexAttribArray(0); glEnableVertexAttribArray(2);
@@ -649,11 +622,9 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
                     }
                     glUseProgram(igp);
                     glUniformMatrix4fv(glGetUniformLocation(igp, "P"), 1, GL_FALSE, &proj[0][0]);
-                    // Draw first 3 vertices directly (no indices) to test position
-                    glDrawArrays(GL_TRIANGLES, 0, 3);
-                    glDrawElements(GL_TRIANGLES, dl->IdxBuffer.Size, sizeof(ImDrawIdx) == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT, nullptr);
+                    glDrawArrays(GL_TRIANGLES, 0, dl->VtxBuffer.Size);
                     glBindVertexArray(0);
-                    glDeleteVertexArrays(1, &tmp_vao); glDeleteBuffers(1, &tmp_vbo); glDeleteBuffers(1, &tmp_ebo);
+                    glDeleteVertexArrays(1, &tmp_vao); glDeleteBuffers(1, &tmp_vbo);
                 }
             }
         }
