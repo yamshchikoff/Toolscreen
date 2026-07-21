@@ -76,9 +76,9 @@ namespace {
 struct HookEntry {
     void* target;
     void* detour;
-    void* trampoline;           // Callable original function
-    uint8_t backup[8];          // Original bytes (8 for atomic write alignment)
-    size_t trampolineSize;      // For munmap in Shutdown
+    void* bridge;              // Trampoline page allocated near target (<2GB)
+    uint8_t backup[8];         // Original 8 bytes at target (for RestoreJump)
+    size_t bridgeSize;         // Size of bridge allocation
     bool enabled;
 };
 
@@ -94,16 +94,16 @@ static void DBG_TRACE(const char* msg) {
     if (fd >= 0) { write(fd, msg, strlen(msg)); close(fd); }
 }
 
-constexpr size_t kJumpSize = 5;  // jmp rel32 = 5 bytes
-constexpr size_t kAtomSize  = 8;  // atomic write: 8 bytes (covers 5-byte jump)
+constexpr size_t kJumpSize     = 5;   // jmp rel32
+constexpr size_t kAtomSize     = 8;   // atomic write alignment
+constexpr size_t kAbsJumpSize  = 14;  // mov rax, imm64; jmp rax (no distance limit)
+constexpr size_t kBridgeSize   = 64;  // small page for bridge trampoline
 
-// Calculate the page-aligned start address containing `addr`
 void* PageAlign(void* addr) {
     long pageSize = sysconf(_SC_PAGESIZE);
     return reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(addr) & ~(pageSize - 1));
 }
 
-// Calculate the page size spanning [addr, addr + size)
 size_t PageSpan(void* addr, size_t size) {
     long pageSize = sysconf(_SC_PAGESIZE);
     uintptr_t start = reinterpret_cast<uintptr_t>(PageAlign(addr));
@@ -112,94 +112,124 @@ size_t PageSpan(void* addr, size_t size) {
     return end - start;
 }
 
-// Write a 5-byte relative jump (E9 + rel32) at `target` redirecting to
-// `destination`. Uses an 8-byte atomic store — safe for concurrent readers.
-// Backs up original 8 bytes into `backup` (8 bytes for alignment).
-void InstallJump(void* target, void* destination, uint8_t* backup) {
-    // Back up 8 original bytes (need 8 for atomic write alignment)
+// Allocate RWX memory within ±2GB of `near_addr`. Tries downward from near_addr
+// then upward. Returns nullptr if no free page within range.
+static void* AllocateNear(void* near_addr, size_t size) {
+    uintptr_t target_page = reinterpret_cast<uintptr_t>(PageAlign(near_addr));
+    uintptr_t low  = target_page > 0x80000000UL ? target_page - 0x7FFF0000UL : 0x10000UL;
+    uintptr_t high = target_page + 0x7FFF0000UL;
+
+    // Scan downward
+    for (uintptr_t addr = target_page - 0x1000; addr >= low; addr -= 0x1000) {
+        void* p = mmap(reinterpret_cast<void*>(addr), size,
+                       PROT_READ | PROT_WRITE | PROT_EXEC,
+                       MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
+        if (p != MAP_FAILED) return p;
+    }
+    // Scan upward
+    for (uintptr_t addr = target_page + 0x1000; addr < high; addr += 0x1000) {
+        void* p = mmap(reinterpret_cast<void*>(addr), size,
+                       PROT_READ | PROT_WRITE | PROT_EXEC,
+                       MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
+        if (p != MAP_FAILED) return p;
+    }
+    return nullptr;
+}
+
+// Install a 5-byte atomic jmp rel32 at target → destination.
+// Requires |dest - target| < 2GB. Returns true on success.
+static bool WriteRelJump(void* target, void* destination, uint8_t* backup) {
     memcpy(backup, target, kAtomSize);
 
-    char buf[256];
-    snprintf(buf, sizeof(buf),
-        "[Toolscreen] InstallJump: target=%p dest=%p dist=%ld\n",
-        target, destination,
-        (long)(static_cast<uint8_t*>(destination) - static_cast<uint8_t*>(target)));
-    DBG_TRACE(buf);
-
-    // Make page writable (keep EXEC — other threads must not fault)
     size_t span = PageSpan(target, kJumpSize);
     if (mprotect(PageAlign(target), span, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
-        DBG_TRACE("[Toolscreen] InstallJump: mprotect RWX FAILED\n");
-        return;
+        DBG_TRACE("[Toolscreen] WriteRelJump: mprotect failed\n");
+        return false;
     }
 
-    // Build new 8 bytes: 5-byte jmp rel32 + 3 bytes from original (never executed)
     uint8_t newBytes[kAtomSize];
-    memcpy(newBytes, target, kAtomSize);        // copy current 8 bytes
-    newBytes[0] = 0xE9;                         // JMP rel32
+    memcpy(newBytes, target, kAtomSize);
+    newBytes[0] = 0xE9;  // JMP rel32
     int64_t rel = static_cast<uint8_t*>(destination) - (static_cast<uint8_t*>(target) + 5);
     if (rel < INT32_MIN || rel > INT32_MAX) {
-        DBG_TRACE("[Toolscreen] InstallJump: distance >2GB, cannot use jmp rel32\n");
         mprotect(PageAlign(target), span, PROT_READ | PROT_EXEC);
-        return;
+        return false;
     }
     int32_t rel32 = static_cast<int32_t>(rel);
     memcpy(&newBytes[1], &rel32, 4);
 
-    // Atomic 8-byte write — other threads see old or new, never torn
     uint64_t newVal;
     memcpy(&newVal, newBytes, 8);
     __atomic_store_n(reinterpret_cast<uint64_t*>(target), newVal, __ATOMIC_SEQ_CST);
 
-    // Verify the write
-    uint64_t verifyVal;
-    memcpy(&verifyVal, target, 8);
-    snprintf(buf, sizeof(buf),
-        "[Toolscreen] InstallJump: wrote %lx readback %lx match=%d\n",
-        newVal, verifyVal, (newVal == verifyVal ? 1 : 0));
-    DBG_TRACE(buf);
-
-    // Restore page protection (remove W)
     mprotect(PageAlign(target), span, PROT_READ | PROT_EXEC);
-    DBG_TRACE("[Toolscreen] InstallJump: done\n");
+    return true;
 }
 
-// Write the original 8 bytes back to `target` (reverse of InstallJump).
+// Write a 14-byte absolute jump: mov rax, imm64; jmp rax
+// No distance limit. Used only in the bridge trampoline (single-threaded context).
+static void WriteAbsJump(void* addr, void* destination) {
+    uint8_t* code = static_cast<uint8_t*>(addr);
+    code[0]  = 0x48; // REX.W
+    code[1]  = 0xB8; // MOV RAX, imm64
+    memcpy(&code[2], &destination, 8);
+    code[10] = 0xFF; // JMP RAX
+    code[11] = 0xE0;
+}
+
+// Main hook install: atomically writes 5-byte jmp rel32 at target, pointing to
+// a bridge page allocated within 2GB of target. The bridge contains a 14-byte
+// absolute jump to the final destination (no distance limit).
+bool InstallJump(void* target, void* destination, uint8_t* backup) {
+    char buf[256];
+    int64_t dist = static_cast<uint8_t*>(destination) - static_cast<uint8_t*>(target);
+    snprintf(buf, sizeof(buf),
+        "[Toolscreen] InstallJump: target=%p dest=%p dist=%ldM\n",
+        target, destination, (long)(dist / (1024*1024)));
+    DBG_TRACE(buf);
+
+    // Try direct 5-byte jump first (faster, no bridge needed)
+    if (dist > (int64_t)(INT32_MIN) && dist < (int64_t)(INT32_MAX)) {
+        if (WriteRelJump(target, destination, backup)) {
+            DBG_TRACE("[Toolscreen] InstallJump: direct jmp rel32 OK\n");
+            return true;
+        }
+    }
+
+    // Distance >2GB — need a bridge trampoline near target
+    DBG_TRACE("[Toolscreen] InstallJump: distance >2GB, allocating bridge\n");
+    void* bridge = AllocateNear(target, kBridgeSize);
+    if (!bridge) {
+        DBG_TRACE("[Toolscreen] InstallJump: bridge allocation FAILED\n");
+        return false;
+    }
+    snprintf(buf, sizeof(buf),
+        "[Toolscreen] InstallJump: bridge=%p dist_to_target=%ldM\n",
+        bridge, (long)((static_cast<uint8_t*>(bridge) - static_cast<uint8_t*>(target)) / (1024*1024)));
+    DBG_TRACE(buf);
+
+    // Write 14-byte absolute jump in bridge → destination
+    WriteAbsJump(bridge, destination);
+
+    // Write 5-byte atomic jmp rel32 at target → bridge
+    if (!WriteRelJump(target, bridge, backup)) {
+        DBG_TRACE("[Toolscreen] InstallJump: rel jump to bridge FAILED\n");
+        munmap(bridge, kBridgeSize);
+        return false;
+    }
+
+    DBG_TRACE("[Toolscreen] InstallJump: bridge jump OK\n");
+    return true;
+}
+
+// Write the original 8 bytes back to `target`.
 void RestoreJump(void* target, const uint8_t* backup) {
     size_t span = PageSpan(target, kJumpSize);
-    if (mprotect(PageAlign(target), span, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
-        //HOOK_LOG("[Toolscreen] RestoreJump: mprotect RWX failed for %p: %s\n", target, strerror(errno));
-        return;
-    }
+    if (mprotect(PageAlign(target), span, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) return;
     uint64_t oldVal;
     memcpy(&oldVal, backup, 8);
     __atomic_store_n(reinterpret_cast<uint64_t*>(target), oldVal, __ATOMIC_SEQ_CST);
     mprotect(PageAlign(target), span, PROT_READ | PROT_EXEC);
-}
-
-// Create a trampoline that executes the backed-up bytes (5) then jumps to (target + kJumpSize)
-void* CreateTrampoline(void* target, const uint8_t* backup) {
-    // Trampoline layout: [backup 5 bytes] [jmp rel32 to target+5 (5 bytes)]
-    size_t trampSize = kAtomSize + kJumpSize;  // 8 + 5 = 13, padded to page
-    void* tramp = mmap(nullptr, trampSize, PROT_READ | PROT_WRITE | PROT_EXEC,
-                       MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (tramp == MAP_FAILED) {
-        //HOOK_LOG("[Toolscreen] CreateTrampoline: mmap failed\n");
-        return nullptr;
-    }
-
-    // Copy 5 original bytes
-    memcpy(tramp, backup, kJumpSize);
-
-    // Append jump to original function (after the 5 backup bytes)
-    uint8_t* code = static_cast<uint8_t*>(tramp) + kJumpSize;
-    code[0] = 0xE9;
-    int64_t rel = (static_cast<uint8_t*>(target) + kJumpSize) - (code + 5);
-    int32_t rel32 = static_cast<int32_t>(rel);
-    memcpy(&code[1], &rel32, 4);
-
-    mprotect(tramp, trampSize, PROT_READ | PROT_EXEC);
-    return tramp;
 }
 
 // Routes X11 input events to ImGui. Called from X11Input::PollEvents() via
@@ -258,8 +288,7 @@ bool CreateHook(void* target, void* detour, void** original) {
 
     auto it = g_hooks.find(target);
     if (it != g_hooks.end()) {
-        // Already hooked — return existing trampoline
-        if (original) *original = it->second.trampoline;
+        if (original) *original = it->second.bridge;  // bridge = callable trampoline
         return true;
     }
 
@@ -267,21 +296,22 @@ bool CreateHook(void* target, void* detour, void** original) {
     memset(&entry, 0, sizeof(entry));
     entry.target = target;
     entry.detour = detour;
-    entry.trampolineSize = kAtomSize + kJumpSize; // backup (8) + jump (5)
+    entry.bridge = nullptr;
+    entry.bridgeSize = 0;
     entry.enabled = false;
 
-    // Install the jump from target to detour
-    InstallJump(target, detour, entry.backup);
-
-    // Create trampoline
-    entry.trampoline = CreateTrampoline(target, entry.backup);
-    if (!entry.trampoline) {
-        // Restore original bytes on failure
-        RestoreJump(target, entry.backup);
+    // Install the jump from target to detour (via bridge if >2GB)
+    if (!InstallJump(target, detour, entry.backup)) {
+        DBG_TRACE("[Toolscreen] CreateHook: InstallJump failed\n");
         return false;
     }
 
-    if (original) *original = entry.trampoline;
+    // Store bridge address as "trampoline" for CallRealSwapBuffers/Shutdown
+    // (bridge IS the trampoline — it jumps to the original function via abs jump)
+    entry.bridge = nullptr;  // Not needed; original called via dlsym(RTLD_NEXT)
+    entry.enabled = true;
+
+    if (original) *original = nullptr;  // Caller should use dlsym, not trampoline
     g_hooks[target] = entry;
     return true;
 }
@@ -608,10 +638,7 @@ void InstallRuntimeHook() {
             return;
         }
         TRACE_CALL("[Toolscreen] InstallRuntimeHook: calling CreateHook\n");
-        void* trampoline = nullptr;
-        if (CreateHook(target, reinterpret_cast<void*>(hk_glXSwapBuffers), &trampoline) && trampoline) {
-            // Store the trampoline (original glXSwapBuffers) for Shutdown/CallRealSwapBuffers
-            g_realSwapBuffers.store(reinterpret_cast<SwapBuffersFunc>(trampoline));
+        if (CreateHook(target, reinterpret_cast<void*>(hk_glXSwapBuffers), nullptr)) {
             HOOK_LOG("[Toolscreen] glXSwapBuffers hooked at %p\n", target);
             TRACE_CALL("[Toolscreen] InstallRuntimeHook: hook OK\n");
         } else {
@@ -648,13 +675,11 @@ bool Initialize() {
 }
 
 void Shutdown() {
-    // Free trampoline allocations
     std::lock_guard<std::mutex> lock(g_hookMutex);
     for (auto& pair : g_hooks) {
-        if (pair.second.trampoline) {
-            munmap(pair.second.trampoline, pair.second.trampolineSize);
+        if (pair.second.bridge) {
+            munmap(pair.second.bridge, pair.second.bridgeSize);
         }
-        // Restore original bytes if hook is still enabled
         if (pair.second.enabled) {
             RestoreJump(pair.second.target, pair.second.backup);
         }
