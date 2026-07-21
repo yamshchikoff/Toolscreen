@@ -564,11 +564,26 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             return;
         }
 
-        if (g_frameCounter == 1) {
-            HOOK_LOG("[Toolscreen] Frame 1: testing glClear\n");
-            glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
-            glClear(GL_COLOR_BUFFER_BIT);
-            HOOK_LOG("[Toolscreen] Frame 1: glClear OK\n");
+        if (shouldLog) HOOK_LOG("[Toolscreen] Frame %d: ImGui frame setup\n", g_frameCounter);
+        {
+            glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+
+            ImGui::SetCurrentContext(g_imguiCtx);
+            ImGuiIO& io = ImGui::GetIO();
+            if (io.DisplaySize.x <= 0.0f) {
+                io.DisplaySize = ImVec2(1920.0f, 1080.0f);
+                io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
+            }
+            X11Input::PollEvents();
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplX11_NewFrame();
+            ImGui::NewFrame();
+            ImGui::Begin("Toolscreen");
+            ImGui::Text("Injector OK");
+            ImGui::End();
+            ImGui::Render();
+            // RenderDrawData called separately
         }
     }
 
