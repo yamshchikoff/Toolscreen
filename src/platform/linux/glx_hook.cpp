@@ -674,8 +674,17 @@ void InstallRuntimeHook() {
         g_realSwapBuffers.store(reinterpret_cast<SwapBuffersFunc>(origFunc));
         HOOK_LOG("[Toolscreen] Original SwapBuffers impl: %p\n", origFunc);
 
-        // Patch — data segment write, no mprotect on code needed
+        // Make table page writable, patch, restore.
+        // mprotect on DATA (not code) — safer for JVM.
+        size_t pageSize = sysconf(_SC_PAGESIZE);
+        void* page = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(slot) & ~(pageSize - 1));
+        size_t span = (reinterpret_cast<uintptr_t>(slot) + sizeof(void*) - reinterpret_cast<uintptr_t>(page) + pageSize - 1) & ~(pageSize - 1);
+        if (mprotect(page, span, PROT_READ | PROT_WRITE) != 0) {
+            HOOK_LOG("[Toolscreen] mprotect(RW) on dispatch table failed: %s\n", strerror(errno));
+            return;
+        }
         *slot = reinterpret_cast<void*>(hk_glXSwapBuffers);
+        mprotect(page, span, PROT_READ);
         HOOK_LOG("[Toolscreen] Dispatch table patched: %p → %p\n", origFunc, *slot);
         TRACE_CALL("[Toolscreen] InstallRuntimeHook: dispatch hook OK\n");
     });
