@@ -565,36 +565,10 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             return;
         }
 
-        if (shouldLog) HOOK_LOG("[Toolscreen] Frame %d: rendering ImGui\n", g_frameCounter);
-        {
-            gloverlay::ScopedState glState;
-
-            // CRITICAL: Sodium sets GL_UNPACK_ROW_LENGTH for its own texture
-            // uploads. ImGui font texture upload reads this value and tries
-            // to read out-of-bounds memory → SIGSEGV in NVIDIA driver.
-            // Reset pixel store before ImGui touches any textures.
-            glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-            glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
-            glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
-            glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-
-            ImGui::SetCurrentContext(g_imguiCtx);
-            ImGuiIO& io = ImGui::GetIO();
-            if (io.DisplaySize.x <= 0.0f) {
-                io.DisplaySize = ImVec2(1920.0f, 1080.0f);
-                io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
-            }
-            X11Input::PollEvents();
-            ImGui_ImplOpenGL3_NewFrame();
-            ImGui_ImplX11_NewFrame();
-            ImGui::NewFrame();
-            ImGui::Begin("Toolscreen");
-            ImGui::Text("Injector OK");
-            ImGui::End();
-            ImGui::Render();
-            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        // ImGui rendering temporarily disabled — testing trampoline stability
+        if (shouldLog && g_frameCounter == 1) {
+            HOOK_LOG("[Toolscreen] Frame %d: hook+trampoline only, ImGui skipped\n", g_frameCounter);
         }
-        if (shouldLog) HOOK_LOG("[Toolscreen] Frame %d: GL state restored\n", g_frameCounter);
     }
 
     // Call real glXSwapBuffers via TRAMPOLINE (not dlsym RTLD_NEXT!).
