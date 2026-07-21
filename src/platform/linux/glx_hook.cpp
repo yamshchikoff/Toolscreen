@@ -564,45 +564,13 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             return;
         }
 
-        if (shouldLog) HOOK_LOG("[Toolscreen] Frame %d: drawing red quad\n", g_frameCounter);
+        if (shouldLog) HOOK_LOG("[Toolscreen] Frame %d: ImGui only\n", g_frameCounter);
         {
-            // Minimal red quad with core GL — no ImGui, no fixed pipeline
-            static GLuint prog = 0, vao = 0, vbo = 0;
-            if (!prog) {
-                const char* vs = "#version 330\nlayout(location=0)in vec2 p;void main(){gl_Position=vec4(p,0,1);}";
-                const char* fs = "#version 330\nout vec4 c;void main(){c=vec4(1,0,0,1);}";
-                GLuint vs_id = glCreateShader(GL_VERTEX_SHADER);
-                glShaderSource(vs_id, 1, &vs, nullptr); glCompileShader(vs_id);
-                GLuint fs_id = glCreateShader(GL_FRAGMENT_SHADER);
-                glShaderSource(fs_id, 1, &fs, nullptr); glCompileShader(fs_id);
-                prog = glCreateProgram();
-                glAttachShader(prog, vs_id); glAttachShader(prog, fs_id);
-                glLinkProgram(prog);
-                glDeleteShader(vs_id); glDeleteShader(fs_id);
-                glGenVertexArrays(1, &vao);
-                glGenBuffers(1, &vbo);
-                float verts[] = {-0.5f,-0.5f, 0.5f,-0.5f, 0.5f,0.5f, -0.5f,-0.5f, 0.5f,0.5f, -0.5f,0.5f};
-                glBindVertexArray(vao);
-                glBindBuffer(GL_ARRAY_BUFFER, vbo);
-                glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
-                glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
-                glEnableVertexAttribArray(0);
-                glBindVertexArray(0);
-            }
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
             glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
             glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
             glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            glUseProgram(prog);
-            glBindVertexArray(vao);
-            glDrawArrays(GL_TRIANGLES, 0, 6);
-            glBindVertexArray(0);
-            glUseProgram(0);
-            glDisable(GL_BLEND);
 
-            // Minimal ImGui: draw rect via drawlist (no windows, no fonts)
             ImGui::SetCurrentContext(g_imguiCtx);
             X11Input::PollEvents();
             ImGui_ImplOpenGL3_NewFrame();
@@ -611,6 +579,9 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             ImGui::GetForegroundDrawList()->AddRect(ImVec2(100,100), ImVec2(300,200), IM_COL32(0,255,0,255));
             ImGui::Render();
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+            // Force GPU to finish before swap
+            glFinish();
         }
     }
 
