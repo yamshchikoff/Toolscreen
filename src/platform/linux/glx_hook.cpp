@@ -586,14 +586,56 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             ImGui::NewFrame();
             ImGui::GetForegroundDrawList()->AddRect(ImVec2(100,100), ImVec2(300,200), IM_COL32(0,255,0,255));
             ImGui::Render();
-            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            // Render ImGui draw data with OUR shader (not ImGui's)
+            ImDrawData* dd = ImGui::GetDrawData();
+            if (dd && dd->CmdListsCount > 0) {
+                for (int i = 0; i < dd->CmdListsCount; i++) {
+                    ImDrawList* dl = dd->CmdLists[i];
+                    // Upload vertices/indices to a temporary buffer and draw
+                    GLuint tmp_vbo, tmp_ebo, tmp_vao;
+                    glGenVertexArrays(1, &tmp_vao);
+                    glGenBuffers(1, &tmp_vbo);
+                    glGenBuffers(1, &tmp_ebo);
+                    glBindVertexArray(tmp_vao);
+                    glBindBuffer(GL_ARRAY_BUFFER, tmp_vbo);
+                    glBufferData(GL_ARRAY_BUFFER, dl->VtxBuffer.Size * sizeof(ImDrawVert), dl->VtxBuffer.Data, GL_STREAM_DRAW);
+                    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, tmp_ebo);
+                    glBufferData(GL_ELEMENT_ARRAY_BUFFER, dl->IdxBuffer.Size * sizeof(ImDrawIdx), dl->IdxBuffer.Data, GL_STREAM_DRAW);
+                    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(ImDrawVert), (void*)offsetof(ImDrawVert, pos));
+                    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, sizeof(ImDrawVert), (void*)offsetof(ImDrawVert, uv));
+                    glVertexAttribPointer(2, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(ImDrawVert), (void*)offsetof(ImDrawVert, col));
+                    glEnableVertexAttribArray(0);
+                    glEnableVertexAttribArray(1);
+                    glEnableVertexAttribArray(2);
+                    // Use a simple shader that just outputs the vertex color
+                    // Build projection: pixel coords → NDC
+                    float L = 0, R = io.DisplaySize.x, T = 0, B = io.DisplaySize.y;
+                    float proj[4][4] = {
+                        {2/(R-L), 0, 0, 0},
+                        {0, 2/(T-B), 0, 0},
+                        {0, 0, -1, 0},
+                        {(R+L)/(L-R), (T+B)/(B-T), 0, 1}
+                    };
+                    static GLuint ig_prog = 0;
+                    if (!ig_prog) {
+                        const char* vs = "#version 330\nlayout(location=0)in vec2 p;layout(location=2)in vec4 c;uniform mat4 Proj;out vec4 vc;void main(){gl_Position=Proj*vec4(p,0,1);vc=c;}";
+                        const char* fs = "#version 330\nin vec4 vc;out vec4 fc;void main(){fc=vc;}";
+                        GLuint vsi = glCreateShader(GL_VERTEX_SHADER); glShaderSource(vsi, 1, &vs, nullptr); glCompileShader(vsi);
+                        GLuint fsi = glCreateShader(GL_FRAGMENT_SHADER); glShaderSource(fsi, 1, &fs, nullptr); glCompileShader(fsi);
+                        ig_prog = glCreateProgram(); glAttachShader(ig_prog, vsi); glAttachShader(ig_prog, fsi); glLinkProgram(ig_prog);
+                        glDeleteShader(vsi); glDeleteShader(fsi);
+                    }
+                    glUseProgram(ig_prog);
+                    glUniformMatrix4fv(glGetUniformLocation(ig_prog, "Proj"), 1, GL_FALSE, &proj[0][0]);
+                    glDrawElements(GL_TRIANGLES, dl->IdxBuffer.Size, sizeof(ImDrawIdx) == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT, nullptr);
+                    glBindVertexArray(0);
+                    glDeleteVertexArrays(1, &tmp_vao);
+                    glDeleteBuffers(1, &tmp_vbo);
+                    glDeleteBuffers(1, &tmp_ebo);
+                }
+            }
             if (g_frameCounter == 1) {
-                ImGuiIO& ioo = ImGui::GetIO();
-                HOOK_LOG("[Toolscreen] DisplaySize=%.0fx%.0f scale=%.1fx%.1f\n",
-                    ioo.DisplaySize.x, ioo.DisplaySize.y,
-                    ioo.DisplayFramebufferScale.x, ioo.DisplayFramebufferScale.y);
-                GLenum err = glGetError();
-                HOOK_LOG("[Toolscreen] ImGui GL error: 0x%x\n", err);
+                HOOK_LOG("[Toolscreen] Rendered %d cmd lists with our shader\n", dd ? dd->CmdListsCount : 0);
             }
 
             // Red quad AFTER — verify FBO still bound
