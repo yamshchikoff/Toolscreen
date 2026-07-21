@@ -608,13 +608,13 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
                     glEnableVertexAttribArray(1);
                     glEnableVertexAttribArray(2);
                     // Use a simple shader that just outputs the vertex color
-                    // Build projection: pixel coords → NDC
-                    float L = 0, R = io.DisplaySize.x, T = 0, B = io.DisplaySize.y;
+                    // Ortho projection: pixel (0..w, 0..h) → NDC (-1..1, 1..-1)
+                    float w = io.DisplaySize.x, h = io.DisplaySize.y;
                     float proj[4][4] = {
-                        {2/(R-L), 0, 0, 0},
-                        {0, 2/(T-B), 0, 0},
-                        {0, 0, -1, 0},
-                        {(R+L)/(L-R), (T+B)/(B-T), 0, 1}
+                        {2/w, 0,    0, -1},
+                        {0,  -2/h,  0,  1},
+                        {0,   0,   -1,  0},
+                        {0,   0,    0,  1}
                     };
                     static GLuint ig_prog = 0;
                     if (!ig_prog) {

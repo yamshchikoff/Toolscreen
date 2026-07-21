@@ -22,6 +22,8 @@
 - **Хук должен работать на любой дистанции** — использовать двухшаговый подход: bridge-страница рядом с target (<2GB) для 5-байтового атомарного jmp rel32, в bridge — 14-байтовый absolute jump без ограничения дистанции.
 - **SIGSEGV в libnvidia-glcore.so** при вызове ImGui_ImplOpenGL3_RenderDrawData — даже с сохранением/восстановлением GL-стейта. Без RenderDrawData игра стабильна.
 - **Sodium** (оптимизатор рендера Minecraft) агрессивно кеширует GL-стейт и чувствителен к посторонним GL-вызовам.
+- **Механизм хука**: патч dispatch-таблицы libGL (НЕ кода). `glXSwapBuffers` делает `mov offset(%rip),%rax; jmp *0x118(%rax)`. Мы парсим `mov`, вычисляем адрес таблицы, заменяем `table[0x118/8]` на `hk_glXSwapBuffers`. Оригинальный указатель сохраняется в `g_realSwapBuffers` для прямого вызова без рекурсии. mprotect только в constructor (процесс заморожен gdb — безопасно). В рантайме mprotect НЕ вызывается.
+- **Первый успешный ImGui-рендер**: достигнут в коммите `45511da` путём замены ImGui-шного RenderDrawData на собственный шейдер с ортографической проекцией. ImDrawVert имеет layout: `pos` (2 float), `uv` (2 float), `col` (4 байта BGRA). Результат: зелёные полосы, образующие фигуру похожую на прямоугольник — искажения из-за неправильного порядка вершинных атрибутов. Но это первый случай когда ImGui-геометрия реально отобразилась на экране.
 
 ## Платформа — проверка регресса рендера
 
@@ -39,3 +41,17 @@
 - **`glPixelStorei(GL_UNPACK_ROW_LENGTH, 0)`** — Sodium выставляет свои значения
 - **`glPixelStorei(GL_UNPACK_ALIGNMENT, 4)`** — дефолт
 - Без этих сбросов — либо краш (SIGSEGV в libnvidia-glcore.so), либо невидимый рендер
+- **`glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0)`** — Sodium использует PBO для загрузки текстур, иначе ImGui font upload падает
+- **`glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0)` и `SKIP_ROWS, 0`** — тоже нужно сбрасывать
+
+### Первый успешный ImGui-рендер (зелёный прямоугольник)
+
+Достигнут в коммите `45511da`. Вместо `ImGui_ImplOpenGL3_RenderDrawData` используется собственный шейдер с ортографической проекцией, который рендерит геометрию из `ImDrawData`:
+
+1. `ImGui::Render()` → `ImDrawData* dd = ImGui::GetDrawData()`
+2. Для каждого `ImDrawList`: создать VAO/VBO/EBO, загрузить `VtxBuffer`/`IdxBuffer`
+3. Vertex attribs: `pos` (2 float, offset 0), `uv` (2 float, offset 8), `col` (4 байта, offset 16)
+4. Проекция: `Proj * vec4(p,0,1)` где Proj = ортогональная матрица из пикселей в NDC
+5. `glDrawElements` с нашим шейдером (пропускает цвет вершины)
+
+Это первый случай когда геометрия ImGui отобразилась на экране.
