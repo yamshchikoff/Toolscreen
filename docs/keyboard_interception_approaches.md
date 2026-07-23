@@ -8,7 +8,7 @@
 |---|--------|----------|--------|---------------------------|
 | 1 | PULL — `XCheckMaskEvent` | Поллинг очереди X11 в `PollEvents()` | ❌ Не работает | Игра (LWJGL/GLFW) дренирует очередь на своём потоке до нашего полла |
 | 2 | PUSH — `XNextEvent` LD_PRELOAD interposer | `extern "C"` + `dlsym(RTLD_NEXT)` | ❌ Не работает | `gdb dlopen` не подменяет символы — LD_PRELOAD не участвует |
-| 3 | PUSH — inline-хук `XNextEvent` | `CreateHook` → `InstallJump` + `X86InsnMinCover` | 🔬 Диагностика: pass-through ✅, полный хук ❌ | Pass-through не крашит → mprotect/libX11 ни при чём. Крашит наша логика в DetourXNextEvent (EnqueueKeyEvent или IsKeyEvent). |
+| 3 | PUSH — inline-хук `XNextEvent` | `CreateHook` → `InstallJump` + `X86InsnMinCover` | 🔬 Диагностика: pass-through ✅, HOOK_LOG ✅, IsKeyEvent ❌ | Краш в `IsKeyEvent(*event_return)` — вызов функции с XEvent&. Симптомы: SEGV_MAPERR по адресу в немапленной странице, похоже на corrupted return address на стеке. |
 
 ---
 
@@ -57,6 +57,18 @@ endbr64; push rbp; mov rsp,rbp; push r12; mov rdi,r12; push rbx
 **Исправление** (`5feccbc`): `X86InsnMinCover()` — дизассемблер длин x86-64 инструкций. В `CreateHook` теперь `backupLen = X86InsnMinCover(target, 5, 32)` — гарантирует, что трамплин прыгает на границу инструкции.
 
 **Диагностика** (`feff607`): pass-through хук (только вызов оригинала, без IsKeyEvent/EnqueueKeyEvent/HOTKEY_LOG) — **игра не крашится**. Вывод: mprotect на код libX11 не вызывает краш NVIDIA. Проблема в нашей логике внутри DetourXNextEvent.
+
+**Бинарный поиск причины краша**:
+
+| Шаг | Коммит | Что добавлено | Результат |
+|-----|--------|---------------|-----------|
+| 0 | `feff607` | Только `return g_realXNextEvent(...)` | ✅ Не крашит |
+| 1 | `450eb8d` | + `HOOK_LOG(event_return->type, event_return->xkey.keycode)` (≤5) | ✅ Не крашит |
+| 2 | `8900825` | + `&& IsKeyEvent(*event_return)` | ❌ Краш |
+
+**Вывод**: краш вызывает именно вызов `IsKeyEvent(*event_return)` — функции, принимающей `const XEvent&`. Прямой доступ к полям XEvent через указатель (`event_return->type`) — работает. Вынос того же доступа в отдельную функцию с передачей по ссылке — крашит.
+
+**Симптомы краша**: `SIGSEGV SEGV_MAPERR` по адресу, заканчивающемуся на `0f23b5` (во всех трёх корках). Адрес находится в немапленной странице, не принадлежит ни libX11, ни libtoolscreen, ни libglfw. Похоже на повреждение return address на стеке.
 
 > ⚠️ **Количество кадров в логе (Frame N) не означает что игра работала N кадров.** Счётчик крутится от фонового рендера ДО инжекта. Краш происходит на первом «настоящем» кадре после возврата в игру. См. CLAUDE.md.
 
