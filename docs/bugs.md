@@ -21,3 +21,33 @@ $1 = 0x0
 
 **Дата обнаружения**: 2026-07-24
 **Дата исправления**: 2026-07-24
+
+## BUG-002: thread_local вызывает __tls_get_addr — ломает стек X11
+
+**Симптомы**: `DetourXNextEvent` с `thread_local XEvent* tls_pendingEvent` вызывает краш `SIGSEGV SEGV_MAPERR` по адресу `XNextEvent + 5 + 256MB`. Краш происходит при возврате из трамплина — битый return address на стеке.
+
+**Причина**: `thread_local` в разделяемой библиотеке использует "global-dynamic" TLS-модель. Каждый доступ к переменной вызывает `__tls_get_addr()` — функцию, которая создаёт стек-фрейм. `DetourXNextEvent` выполняется внутри `XLockDisplay` — вызов `__tls_get_addr` ломает стек, по которому ходит X11.
+
+Ассемблер (из object-файла):
+```asm
+DetourXNextEvent:
+    endbr64
+    push   %r12                     ; сохраняем регистры
+    mov    g_realXNextEvent(%rip),%r12
+    push   %rbp
+    push   %rbx
+    test   %r12,%r12
+    je     .Lerror
+    ...
+    lea    tls_pendingEvent(%rip),%rdi
+    call   __tls_get_addr           ; ← ВОТ ПРОБЛЕМА! Стек-фрейм внутри XLockDisplay
+    mov    %rbx,(%rax)              ; tls_pendingEvent = event_return
+    ...
+    jmp    *%rax                    ; tail call правильный, но стек уже испорчен
+```
+
+**Решение**: заменить `thread_local` на `static` (XNextEvent всегда под XLockDisplay, один Display → один поток → thread-safety не нужна).
+
+**Урок**: в inline-хуках на X11-функции нельзя использовать `thread_local` — он вызывает `__tls_get_addr`. Аналогично нельзя вызывать любые функции (включая `fopen`/`fprintf` для логов). Только pure computation и tail call.
+
+**Дата обнаружения**: 2026-07-24
