@@ -343,23 +343,18 @@ static void TRACE_CALL(const char* msg) {
 }
 
 // ---- Inline-hook detour для XNextEvent (подход 3) ----
-// ДИАГНОСТИКА: шаг 1 — только лог (первые 5 событий).
+// Кладёт событие в очередь ДО вызова трамплина (tail call — jmp, не call).
+// Обработка — в hk_glXSwapBuffers (рендер-поток).
 static int (*g_realXNextEvent)(Display*, XEvent*) = nullptr;
+static thread_local XEvent* tls_pendingEvent = nullptr;
 
 int DetourXNextEvent(Display* display, XEvent* event_return) {
     if (!g_realXNextEvent) return -1;
-    int result = g_realXNextEvent(display, event_return);
-    // Тест: читаем XEvent ДО условия (как в шаге 1), условие от XEvent не зависит
-    if (result == 0 && event_return) {
-        volatile int evType = event_return->type;  // принудительное чтение
-        (void)evType;
-        static int count = 0;
-        if (++count <= 5) {
-            HOOK_LOG("[Toolscreen] XEVENT: type=%d keycode=%u\n",
-                     event_return->type, event_return->xkey.keycode);
-        }
+    // Сохраняем ДО вызова — не ломает tail call
+    if (event_return) {
+        tls_pendingEvent = event_return;
     }
-    return result;
+    return g_realXNextEvent(display, event_return);  // tail call (jmp)
 }
 
 bool CreateHook(void* target, void* detour, void** original) {
@@ -669,15 +664,14 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
                 io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
             }
             // Выгребаем клавиатурные события из XNextEvent-хука
-            {
-                auto keyEvents = DequeueKeyEvents();
-                for (const auto& ev : keyEvents) {
-                    if (ev.type == KeyPress) {
-                        HOTKEY_LOG("[Toolscreen] XEVENT: KeyPress keycode=%u\n",
-                                   ev.xkey.keycode);
-                    } else if (ev.type == KeyRelease) {
-                        HOTKEY_LOG("[Toolscreen] XEVENT: KeyRelease keycode=%u\n",
-                                   ev.xkey.keycode);
+            // (thread-local, сохранено ДО tail call)
+            if (XEvent* ev = tls_pendingEvent) {
+                tls_pendingEvent = nullptr;
+                if (ev->type == KeyPress || ev->type == KeyRelease) {
+                    static int keyCount = 0;
+                    if (++keyCount <= 10) {
+                        HOOK_LOG("[Toolscreen] XEVENT: type=%d keycode=%u\n",
+                                 ev->type, ev->xkey.keycode);
                     }
                 }
             }
