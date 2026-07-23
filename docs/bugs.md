@@ -51,3 +51,26 @@ DetourXNextEvent:
 **Урок**: в inline-хуках на X11-функции нельзя использовать `thread_local` — он вызывает `__tls_get_addr`. Аналогично нельзя вызывать любые функции (включая `fopen`/`fprintf` для логов). Только pure computation и tail call.
 
 **Дата обнаружения**: 2026-07-24
+
+## BUG-003: краш даже с чистым asm (без call, без push, без thread_local)
+
+**Симптомы**: после исправления BUG-002 (static вместо thread_local, musttail) ассемблер `DetourXNextEvent` чистый:
+```asm
+mov    g_realXNextEvent(%rip),%rax
+test   %rax,%rax / je
+test   %rsi,%rsi / je
+mov    %rsi,s_pendingEvent(%rip)
+jmp    *%rax              ; чистый tail call
+```
+Ни одного `push`, ни одного `call` в теле функции. Но игра всё равно крашится с `SIGSEGV SEGV_MAPERR` по адресу `libX11_base + X + 0x3b5` (offset 0x3b5 = XNextEvent+5 в пределах страницы, но битый номер страницы).
+
+**Гипотезы**:
+1. `mov %rsi, s_pendingEvent(%rip)` — запись в глобальную переменную внутри XLockDisplay вызывает проблему
+2. Чтение `s_pendingEvent` в `hk_glXSwapBuffers` (drain) — разыменование XEvent* на рендер-потоке
+3. Трамплин прыгает неправильно независимо от нашего кода
+
+**Что нужно проверить** (бинарный поиск):
+- Отключить drain (не читать s_pendingEvent в hk_glXSwapBuffers) → краш?
+- Отключить запись в s_pendingEvent (pass-through) → не крашит? (уже проверено — pass-through работает)
+
+**Дата обнаружения**: 2026-07-24
