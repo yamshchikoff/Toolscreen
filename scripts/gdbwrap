@@ -1,118 +1,107 @@
 #!/usr/bin/env python3
-"""Персистентная GDB-сессия. Спецификация: docs/gdbwrap_requirements.md"""
+"""Персистентная GDB-сессия."""
 
 import os, sys, time, pexpect
 
 DIR = "/tmp/gdbwrap"
-CMD_FILE  = f"{DIR}/cmd"
-OUT_FILE  = f"{DIR}/out"
-DONE_FILE = f"{DIR}/done"
-
 os.makedirs(DIR, exist_ok=True)
 
-def spawn_gdb(args):
-    """Запустить gdb и дождаться промпта."""
-    cmdline = " ".join(args)
-    child = pexpect.spawn(cmdline, encoding='utf-8', timeout=30, codec_errors='replace')
-    # GDB может спросить про debuginfod
-    i = child.expect_exact(["(gdb)", "debuginfod"], timeout=15)
-    if i == 1:
-        child.sendline("n")  # ответ на "Enable debuginfod?"
-        child.expect_exact("(gdb)", timeout=10)
-    child.sendline("set pagination off")
-    child.expect_exact("(gdb)")
-    child.sendline("set confirm off")
-    child.expect_exact("(gdb)")
-    return child
+READY = f"{DIR}/ready"
+STOP  = f"{DIR}/stop"
+CMD   = f"{DIR}/cmd"
+OUT   = f"{DIR}/out"
 
 def start(args):
-    stop()
+    """Запустить gdb и войти в серверный цикл."""
+    cleanup()
 
-    child = spawn_gdb(args)
-    print(f"GDBWRAP_READY pid={child.pid}")
+    cmdline = " ".join(args)
+    child = pexpect.spawn(cmdline, encoding='utf-8', timeout=60, codec_errors='replace')
+
+    # Стартовый диалог
+    for prompt in ["(gdb)", "debuginfod"]:
+        i = child.expect_exact(["(gdb)", "debuginfod"], timeout=15)
+        if i == 1:
+            child.sendline("n")
+        else:
+            break
+    child.sendline("set pagination off"); child.expect_exact("(gdb)")
+    child.sendline("set confirm off");     child.expect_exact("(gdb)")
+
+    # Сигнал: сервер готов
+    open(READY, 'w').close()
+    sys.stdout.write(f"READY {child.pid}\n")
     sys.stdout.flush()
 
-    while True:
-        time.sleep(0.15)
-        if not os.path.exists(CMD_FILE):
-            continue
+    # Серверный цикл
+    while not os.path.exists(STOP):
+        if os.path.exists(CMD):
+            with open(CMD) as f:
+                cmd_text = f.read().strip()
+            if cmd_text:
+                os.remove(CMD)
+                # Отправляем
+                child.sendline(cmd_text)
+                try:
+                    child.expect_exact("(gdb)", timeout=10)
+                except (pexpect.TIMEOUT, pexpect.EOF):
+                    pass
+                # Пишем вывод
+                output = child.before if child.before else ""
+                with open(OUT, 'w') as f:
+                    f.write(output)
+        time.sleep(0.1)
 
-        with open(CMD_FILE, 'r') as f:
-            command = f.read().strip()
-        if not command:
-            continue
-        open(CMD_FILE, 'w').close()  # очистить
+    # Остановка
+    try: child.sendline("quit"); child.close()
+    except: pass
+    cleanup()
+    print("STOPPED")
 
-        if command == "__STOP__":
-            try:
-                child.sendline("quit")
-                time.sleep(0.3)
-                child.close()
-            except:
-                pass
-            break
+def cmd(command, timeout=30):
+    """Послать команду, дождаться ответа."""
+    # Ждём готовности сервера
+    deadline = time.time() + 10
+    while not os.path.exists(READY):
+        time.sleep(0.1)
+        if time.time() > deadline:
+            return "TIMEOUT: server not ready"
 
-        child.sendline(command)
-        try:
-            child.expect_exact("(gdb)", timeout=5)
-        except pexpect.TIMEOUT:
-            pass
-        except pexpect.EOF:
-            pass
-
-        output = child.before if child.before else "(no output)"
-        with open(OUT_FILE, 'w') as f:
-            f.write(output)
-        open(DONE_FILE, 'w').close()
-
-    for f in [CMD_FILE, OUT_FILE, DONE_FILE]:
+    # Очищаем старый вывод
+    for f in [OUT, CMD]:
         if os.path.exists(f):
-            os.unlink(f)
-    print("GDBWRAP_STOPPED")
+            os.remove(f)
 
-def cmd(command, timeout=None):
-    for f in [OUT_FILE, DONE_FILE]:
-        if os.path.exists(f):
-            os.unlink(f)
-
-    with open(CMD_FILE, 'w') as f:
+    # Пишем команду
+    with open(CMD, 'w') as f:
         f.write(command + "\n")
 
-    deadline = time.time() + (timeout or 30)
-    while not os.path.exists(DONE_FILE):
-        time.sleep(0.05)
+    # Ждём ответ (сервер создаст OUT)
+    deadline = time.time() + timeout
+    while not os.path.exists(OUT):
+        time.sleep(0.1)
         if time.time() > deadline:
-            return "GDBWRAP_TIMEOUT"
+            return "TIMEOUT: no response"
 
-    # Ждём немного чтобы гарантировать полную запись
-    time.sleep(0.1)
-    if os.path.exists(OUT_FILE):
-        with open(OUT_FILE, 'r') as f:
-            return f.read()
-    return "(no output)"
+    time.sleep(0.1)  # дать fs синхронизироваться
+    with open(OUT) as f:
+        return f.read()
 
 def stop():
-    try:
-        cmd("__STOP__", timeout=3)
-    except:
-        pass
-    time.sleep(0.3)
-    for f in [CMD_FILE, OUT_FILE, DONE_FILE]:
+    open(STOP, 'w').close()
+    time.sleep(0.5)
+    cleanup()
+
+def cleanup():
+    for f in [READY, STOP, CMD, OUT]:
         if os.path.exists(f):
-            os.unlink(f)
+            os.remove(f)
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
-        print("Usage: gdbwrap start <gdb-args> | cmd [timeout] <command> | stop")
-        sys.exit(1)
+        print("Usage: gdbwrap start <gdb-args> | cmd <command> | stop"); sys.exit(1)
     action = sys.argv[1]
-    if action == 'start':
-        start(sys.argv[2:])
-    elif action == 'cmd':
-        timeout = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2].lstrip('-').isdigit() else None
-        cmd_args = sys.argv[2:] if timeout is None else sys.argv[3:]
-        print(cmd(' '.join(cmd_args), timeout))
-    elif action == 'stop':
-        stop()
-    else:
-        print(f"Unknown: {action}")
+    if action == 'start': start(sys.argv[2:])
+    elif action == 'cmd': print(cmd(' '.join(sys.argv[2:])), end='')
+    elif action == 'stop': stop()
+    else: print(f"Unknown: {action}")
