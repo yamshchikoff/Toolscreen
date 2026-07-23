@@ -91,6 +91,27 @@ $ kill -INT $(ps aux | grep "/usr/bin/gdb" | grep -v grep | awk '{print $2}')
 $ python3 scripts/gdbwrap stop
 ```
 
+## Инжект .so через gdbwrap (`call dlopen`)
+
+```bash
+# 1. Остановить все потоки
+$ kill -INT $(pgrep -f "/usr/bin/gdb")
+
+# 2. Заблокировать планировщик
+$ python3 scripts/gdbwrap cmd "set scheduler-locking on"
+
+# 3. Инжект
+$ python3 scripts/gdbwrap cmd "call (void*)dlopen(\"/путь/к/libtoolscreen.so\", 2)"
+$1 = (void *) 0x...   # ненулевой = успех
+
+# 4. Проверить
+$ python3 scripts/gdbwrap cmd "call (char*)dlerror()"
+$2 = 0x0              # нет ошибки
+
+# 5. Разблокировать
+$ python3 scripts/gdbwrap cmd "set scheduler-locking off"
+```
+
 ## Особенности работы с Minecraft
 
 - **Долгий аттач**: 60+ потоков, paging — READY появляется через 10-20 секунд
