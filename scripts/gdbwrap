@@ -1,65 +1,132 @@
 #!/usr/bin/env python3
-"""Интерактивная обёртка над GDB через pexpect.
+"""
+Обёртка над GDB с удержанием сессии через FIFO + файл вывода.
 
-Сессия хранится в /tmp/gdbwrap/session.
-attach <pid>  — аттач
-cmd <command> — выполнить команду, вернуть вывод
-detach        — отсоединиться
+attach <pid>:  запускает gdb в фоне, stdin = FIFO, stdout = файл.
+               Держит FIFO открытым на запись через фоновый cat.
+cmd <command>: пишет команду в FIFO, читает новый вывод из файла.
+out:           показать весь накопленный вывод.
+detach:        послать detach+quit, убить gdb.
 """
 
-import os, sys, pickle, pexpect
+import os, sys, time, signal, select
 
-SESSION = "/tmp/gdbwrap/session"
+DIR = "/tmp/gdbwrap"
+FIFO_IN  = f"{DIR}/in"
+FILE_OUT = f"{DIR}/out"
+PID_FILE = f"{DIR}/gdb_pid"
+KEEPER_FILE = f"{DIR}/keeper_pid"
 SUDO_PASS = "rabbit chess"
 
+def setup():
+    os.makedirs(DIR, exist_ok=True)
+    if os.path.exists(FIFO_IN):
+        os.unlink(FIFO_IN)
+    os.mkfifo(FIFO_IN)
+    open(FILE_OUT, 'w').close()
+
 def attach(pid):
-    """Аттачиться и сохранить сессию."""
-    os.makedirs(os.path.dirname(SESSION), exist_ok=True)
-    cmd = f"sudo -S gdb --pid {pid} -q"
-    child = pexpect.spawn(cmd, encoding='utf-8', timeout=30, codec_errors='replace')
-    child.expect_exact("password")
-    child.sendline(SUDO_PASS)
-    child.expect_exact("(gdb)")
-    # Убираем пагинацию
-    child.sendline("set pagination off")
-    child.expect_exact("(gdb)")
-    child.sendline("set confirm off")
-    child.expect_exact("(gdb)")
-    with open(SESSION, 'wb') as f:
-        pickle.dump(child, f)
-    print(f"GDB_ATTACHED pid={pid}")
+    detach()
+    setup()
+
+    # Фоновый cat держит FIFO открытым на запись (чтобы gdb не получил EOF)
+    keeper = os.fork()
+    if keeper == 0:
+        # Дочерний процесс: читает из /dev/null и "пишет" в FIFO
+        # Просто держит fd открытым
+        import fcntl
+        fd = os.open(FIFO_IN, os.O_WRONLY)
+        fcntl.fcntl(fd, fcntl.F_SETFL, fcntl.fcntl(fd, fcntl.F_GETFL) & ~os.O_NONBLOCK)
+        # Спим вечно
+        while True:
+            time.sleep(3600)
+
+    with open(KEEPER_FILE, 'w') as f:
+        f.write(str(keeper))
+
+    # Запускаем gdb
+    shell_cmd = (
+        f"echo '{SUDO_PASS}' | sudo -S gdb --pid {pid} -q "
+        f"< {FIFO_IN} > {FILE_OUT} 2>&1"
+    )
+    gdb_pid = os.fork()
+    if gdb_pid == 0:
+        os.setsid()
+        os.system(shell_cmd)
+        os._exit(0)
+
+    with open(PID_FILE, 'w') as f:
+        f.write(str(gdb_pid))
+
+    time.sleep(1)
+    # Читаем начальный вывод
+    with open(FILE_OUT) as f:
+        out = f.read()
+    print(out[-500:] if len(out) > 500 else out)
+    print("READY")
 
 def cmd(command):
-    """Выполнить команду в активной сессии."""
-    with open(SESSION, 'rb') as f:
-        child = pickle.load(f)
-    child.sendline(command)
+    """Послать команду в gdb. Возвращает новый вывод."""
+    # Запоминаем текущий размер файла
+    before_sz = os.path.getsize(FILE_OUT) if os.path.exists(FILE_OUT) else 0
+
+    # Пишем команду в FIFO
     try:
-        child.expect_exact("(gdb)", timeout=5)
-    except pexpect.TIMEOUT:
-        pass
-    output = child.before if child.before else "(no output)"
-    with open(SESSION, 'wb') as f:
-        pickle.dump(child, f)
-    return output
+        fd = os.open(FIFO_IN, os.O_WRONLY | os.O_NONBLOCK)
+        os.write(fd, (command + "\n").encode())
+        os.close(fd)
+    except Exception as e:
+        return f"WRITE_ERROR: {e}"
+
+    # Ждём выполнения
+    time.sleep(0.3)
+
+    # Читаем новый вывод
+    after_sz = os.path.getsize(FILE_OUT) if os.path.exists(FILE_OUT) else 0
+    if after_sz > before_sz:
+        with open(FILE_OUT) as f:
+            f.seek(before_sz)
+            new_out = f.read()
+        return new_out
+    return "(no new output)"
+
+def out():
+    """Показать весь вывод."""
+    if os.path.exists(FILE_OUT):
+        with open(FILE_OUT) as f:
+            return f.read()
+    return "(no output)"
 
 def detach():
-    """Detach и закрыть сессию."""
-    if os.path.exists(SESSION):
-        try:
-            cmd("detach")
-        except:
-            pass
-        try:
-            cmd("quit")
-        except:
-            pass
-        os.unlink(SESSION)
+    """Остановить gdb и keeper."""
+    try:
+        cmd("detach")
+    except:
+        pass
+    try:
+        cmd("quit")
+    except:
+        pass
+    # Убить keeper
+    if os.path.exists(KEEPER_FILE):
+        with open(KEEPER_FILE) as f:
+            os.kill(int(f.read().strip()), signal.SIGKILL)
+    # Убить gdb
+    if os.path.exists(PID_FILE):
+        with open(PID_FILE) as f:
+            try:
+                os.kill(int(f.read().strip()), signal.SIGKILL)
+            except:
+                pass
+    # Очистить
+    for f in [FIFO_IN, FILE_OUT, PID_FILE, KEEPER_FILE]:
+        if os.path.exists(f):
+            os.unlink(f)
     print("DETACHED")
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
-        print("Usage: gdbwrap attach <pid> | cmd <command> | detach")
+        print("Usage: gdbwrap attach <pid> | cmd <command> | out | detach")
         sys.exit(1)
 
     action = sys.argv[1]
@@ -69,6 +136,8 @@ if __name__ == '__main__':
     elif action == 'cmd':
         result = cmd(' '.join(sys.argv[2:]))
         print(result)
+    elif action == 'out':
+        print(out())
     elif action == 'detach':
         detach()
     else:
