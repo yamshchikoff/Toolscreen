@@ -350,11 +350,12 @@ static thread_local XEvent* tls_pendingEvent = nullptr;
 
 int DetourXNextEvent(Display* display, XEvent* event_return) {
     if (!g_realXNextEvent) return -1;
-    // Сохраняем ДО вызова — не ломает tail call
     if (event_return) {
         tls_pendingEvent = event_return;
     }
-    return g_realXNextEvent(display, event_return);  // tail call (jmp)
+    // musttail: принудительный tail call (jmp вместо call).
+    // Без этого компилятор генерирует call → ломает X11-стек → краш.
+    [[gnu::musttail]] return g_realXNextEvent(display, event_return);
 }
 
 bool CreateHook(void* target, void* detour, void** original) {
