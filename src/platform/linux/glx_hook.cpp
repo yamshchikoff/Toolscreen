@@ -349,8 +349,10 @@ static int (*g_realXNextEvent)(Display*, XEvent*) = nullptr;
 int DetourXNextEvent(Display* display, XEvent* event_return) {
     if (!g_realXNextEvent) return -1;
     int result = g_realXNextEvent(display, event_return);
-    if (result == 0 && event_return &&
-        (event_return->type == KeyPress || event_return->type == KeyRelease)) {
+    // Тест: читаем XEvent ДО условия (как в шаге 1), условие от XEvent не зависит
+    if (result == 0 && event_return) {
+        volatile int evType = event_return->type;  // принудительное чтение
+        (void)evType;
         static int count = 0;
         if (++count <= 5) {
             HOOK_LOG("[Toolscreen] XEVENT: type=%d keycode=%u\n",
