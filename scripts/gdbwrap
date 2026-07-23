@@ -15,23 +15,28 @@ def start(args):
     """Запустить gdb и войти в серверный цикл."""
     cleanup()
 
-    cmdline = " ".join(args)
+    # Добавляем -ex команды для отключения пагинации СРАЗУ
+    gdb_args = list(args)
+    gdb_args[1:1] = ['-iex="set pagination off"', '-ex="set confirm off"']
+    cmdline = " ".join(gdb_args)
     child = pexpect.spawn(cmdline, encoding='utf-8', timeout=60, codec_errors='replace')
 
-    # Стартовый диалог
-    for prompt in ["(gdb)", "debuginfod"]:
-        i = child.expect_exact(["(gdb)", "debuginfod"], timeout=15)
+    # Стартовый диалог: ждём (gdb), обрабатывая debuginfod
+    while True:
+        i = child.expect_exact(["(gdb)", "debuginfod"], timeout=60)
         if i == 1:
             child.sendline("n")
         else:
             break
-    child.sendline("set pagination off"); child.expect_exact("(gdb)")
-    child.sendline("set confirm off");     child.expect_exact("(gdb)")
 
-    # Сигнал: сервер готов
+    # Сигнал: сервер готов. Очищаем буфер от init-команд.
+    child.before = ""
     open(READY, 'w').close()
     sys.stdout.write(f"READY {child.pid}\n")
     sys.stdout.flush()
+    # Также пишем в файл для отладки
+    with open(f"{DIR}/log", 'a') as lf:
+        lf.write(f"READY {child.pid}\n")
 
     # Серверный цикл
     while not os.path.exists(STOP):
@@ -40,14 +45,22 @@ def start(args):
                 cmd_text = f.read().strip()
             if cmd_text:
                 os.remove(CMD)
-                # Отправляем
-                child.sendline(cmd_text)
+                # Синхронизация: ждём (gdb) если ещё не на нём
                 try:
-                    child.expect_exact("(gdb)", timeout=10)
-                except (pexpect.TIMEOUT, pexpect.EOF):
+                    child.expect_exact("(gdb)", timeout=0.5)
+                except:
                     pass
-                # Пишем вывод
-                output = child.before if child.before else ""
+                # Отправляем команду
+                child.sendline(cmd_text)
+                # Ждём следующий (gdb)
+                try:
+                    child.expect_exact("(gdb)", timeout=120)
+                except pexpect.EOF:
+                    output = "[EOF] " + (child.before or "")
+                except pexpect.TIMEOUT:
+                    output = "[TIMEOUT] " + (child.before or "")
+                else:
+                    output = child.before if child.before else "(no output)"
                 with open(OUT, 'w') as f:
                     f.write(output)
         time.sleep(0.1)
