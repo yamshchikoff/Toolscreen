@@ -44,6 +44,7 @@ sysctl -w kernel.yama.ptrace_scope=0 > /dev/null 2>&1
 # Инжектим через gdb: dlopen с флагом RTLD_NOW=2
 gdb --pid "$PID" \
     -batch \
+    -ex "set scheduler-locking on" \
     -ex "call (void*)dlopen(\"libXtst.so.6\", 2)" \
     -ex "call (void*)dlopen(\"$SO\", 2)" \
     -ex "call (char*)dlerror()" \
