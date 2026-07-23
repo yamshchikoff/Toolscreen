@@ -333,17 +333,13 @@ static std::vector<XEvent> DequeueKeyEvents() {
 }
 
 // ---- Inline-hook detour для XNextEvent (подход 3) ----
-// Вызывается вместо XNextEvent после установки хука.
-// Вызывает оригинал через trampoline, затем кладёт клавиатурные события в очередь.
+// ДИАГНОСТИКА: тривиальный pass-through — только вызывает оригинал.
+// Проверяем, проблема в нашем коде или в mprotect на код libX11.
 static int (*g_realXNextEvent)(Display*, XEvent*) = nullptr;
 
 int DetourXNextEvent(Display* display, XEvent* event_return) {
     if (!g_realXNextEvent) return -1;
-    int result = g_realXNextEvent(display, event_return);
-    if (result == 0 && event_return && IsKeyEvent(*event_return)) {
-        EnqueueKeyEvent(*event_return);
-    }
-    return result;
+    return g_realXNextEvent(display, event_return);
 }
 
 // Utility log functions (available to all functions in GLXHook namespace)

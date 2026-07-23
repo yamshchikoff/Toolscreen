@@ -8,7 +8,7 @@
 |---|--------|----------|--------|---------------------------|
 | 1 | PULL — `XCheckMaskEvent` | Поллинг очереди X11 в `PollEvents()` | ❌ Не работает | Игра (LWJGL/GLFW) дренирует очередь на своём потоке до нашего полла |
 | 2 | PUSH — `XNextEvent` LD_PRELOAD interposer | `extern "C"` + `dlsym(RTLD_NEXT)` | ❌ Не работает | `gdb dlopen` не подменяет символы — LD_PRELOAD не участвует |
-| 3 | PUSH — inline-хук `XNextEvent` | `CreateHook` → `InstallJump` (5-байтовый jmp rel32) + `X86InsnMinCover` (динамический backupLen) | ✅ Реализован, ждёт проверки | `5feccbc` — дизассемблер гарантирует границу инструкции |
+| 3 | PUSH — inline-хук `XNextEvent` | `CreateHook` → `InstallJump` + `X86InsnMinCover` | 🔬 Диагностика: pass-through хук | Игра крашится в libGLX_nvidia при active хуке. Проверяем: pass-through (без нашей логики) → краш? |
 
 ---
 
