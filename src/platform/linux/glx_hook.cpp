@@ -339,7 +339,16 @@ static int (*g_realXNextEvent)(Display*, XEvent*) = nullptr;
 
 int DetourXNextEvent(Display* display, XEvent* event_return) {
     if (!g_realXNextEvent) return -1;
-    return g_realXNextEvent(display, event_return);
+    int result = g_realXNextEvent(display, event_return);
+    // Шаг 1: только лог (первые 5 событий)
+    if (result == 0 && event_return) {
+        static int count = 0;
+        if (++count <= 5) {
+            HOOK_LOG("[Toolscreen] XEVENT: type=%d keycode=%u\n",
+                     event_return->type, event_return->xkey.keycode);
+        }
+    }
+    return result;
 }
 
 // Utility log functions (available to all functions in GLXHook namespace)
