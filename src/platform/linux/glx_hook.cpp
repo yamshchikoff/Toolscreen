@@ -664,17 +664,8 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
                 io.DisplaySize = ImVec2(1920.0f, 1080.0f);
                 io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
             }
-            // Выгребаем клавиатурные события из XNextEvent-хука
-            if (XEvent* ev = s_pendingEvent) {
-                s_pendingEvent = nullptr;
-                if (ev->type == KeyPress || ev->type == KeyRelease) {
-                    static int keyCount = 0;
-                    if (++keyCount <= 10) {
-                        HOOK_LOG("[Toolscreen] XEVENT: type=%d keycode=%u\n",
-                                 ev->type, ev->xkey.keycode);
-                    }
-                }
-            }
+            // ДИАГНОСТИКА: drain отключён — проверяем, крашит ли сам mov в хуке
+            // s_pendingEvent намеренно не читаем
 
             X11Input::PollEvents();
             ImGui_ImplOpenGL3_NewFrame();
