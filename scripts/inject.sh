@@ -30,12 +30,8 @@ echo "PID: $PID"
 prlimit --pid "$PID" --core=unlimited
 
 # Сохраняем и заменяем core_pattern (apport отбрасывает пользовательские корки)
-# Вырубаем apport (иначе он отбрасывает корки не из пакетов)
-if systemctl is-active --quiet apport 2>/dev/null; then
-    systemctl stop apport apport-autoreport 2>/dev/null || true
-    echo "Apport stopped"
-fi
-# Ставим прямой путь для корок
+# Меняем core_pattern на прямую запись в /tmp (apport отбрасывает корки не из пакетов).
+# Не восстанавливаем обратно — пусть корки пишутся для всех, лимиты и так только у Minecraft подняты.
 echo "/tmp/core.%p.%t" > /proc/sys/kernel/core_pattern
 echo "Core dumps → /tmp/core.*"
 
