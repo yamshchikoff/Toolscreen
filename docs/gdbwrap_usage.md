@@ -63,6 +63,11 @@ $ python3 scripts/gdbwrap start gdb --pid $(pgrep -f runtime/jre-legacy.*java) &
 # Ждать ~15-20 секунд — GDB загружает 60+ потоков
 $ cat /tmp/gdbwrap/ready  # проверка готовности
 
+# ПЕРВЫМ ДЕЛОМ: не останавливаться на JVM-сигналах
+$ python3 scripts/gdbwrap cmd "handle SIGSEGV nostop pass"
+Signal        Stop    Pass to program Description
+SIGSEGV       No      Yes             Segmentation fault
+
 # Команды
 $ python3 scripts/gdbwrap cmd "info threads"
   1    Thread ... "java"  __futex_abstimed_wait_common64
@@ -89,7 +94,8 @@ $ python3 scripts/gdbwrap stop
 ## Особенности работы с Minecraft
 
 - **Долгий аттач**: 60+ потоков, paging — READY появляется через 10-20 секунд
-- **SIGSEGV — норма**: JVM генерит внутренние SIGSEGV (`Parker::park`, `signalHandler`), это не краш игры. `continue` чтобы продолжить
+- **SIGSEGV — норма**: JVM генерит внутренние SIGSEGV (`Parker::park`, `signalHandler`). Без `handle SIGSEGV nostop pass` gdb будет останавливаться на каждом, играть невозможно. С этой командой — SIGSEGV молча передаются JVM, игра работает.
+- **Первая команда после аттача**: `python3 scripts/gdbwrap cmd "handle SIGSEGV nostop pass"`
 - **Нет символов**: JVM-библиотеки stripped, JIT-код без отладочной информации — `bt` показывает `??`. Но функции JVM (`Parker::park`) видны
 - **`continue` зависает**: игра работает, `cmd` ждёт `(gdb)` который не появится до сигнала. Прервать через `kill -INT`
 - **`-iex="set pagination off"`**: gdbwrap передаёт этот флаг автоматом, иначе вывод из 60+ потоков уходит в paging
