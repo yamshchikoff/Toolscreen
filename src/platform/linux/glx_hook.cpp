@@ -332,25 +332,6 @@ static std::vector<XEvent> DequeueKeyEvents() {
     return result;
 }
 
-// ---- Inline-hook detour для XNextEvent (подход 3) ----
-// ДИАГНОСТИКА: тривиальный pass-through — только вызывает оригинал.
-// Проверяем, проблема в нашем коде или в mprotect на код libX11.
-static int (*g_realXNextEvent)(Display*, XEvent*) = nullptr;
-
-int DetourXNextEvent(Display* display, XEvent* event_return) {
-    if (!g_realXNextEvent) return -1;
-    int result = g_realXNextEvent(display, event_return);
-    // Шаг 1: только лог (первые 5 событий)
-    if (result == 0 && event_return) {
-        static int count = 0;
-        if (++count <= 5) {
-            HOOK_LOG("[Toolscreen] XEVENT: type=%d keycode=%u\n",
-                     event_return->type, event_return->xkey.keycode);
-        }
-    }
-    return result;
-}
-
 // Utility log functions (available to all functions in GLXHook namespace)
 static void HOOK_LOG(const char* fmt, ...) {
     FILE* f = fopen("/home/user/toolscreen.log", "a");
@@ -359,6 +340,23 @@ static void HOOK_LOG(const char* fmt, ...) {
 static void TRACE_CALL(const char* msg) {
     int fd = open("/home/user/toolscreen_trace.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
     if (fd >= 0) { write(fd, msg, strlen(msg)); close(fd); }
+}
+
+// ---- Inline-hook detour для XNextEvent (подход 3) ----
+// ДИАГНОСТИКА: шаг 1 — только лог (первые 5 событий).
+static int (*g_realXNextEvent)(Display*, XEvent*) = nullptr;
+
+int DetourXNextEvent(Display* display, XEvent* event_return) {
+    if (!g_realXNextEvent) return -1;
+    int result = g_realXNextEvent(display, event_return);
+    if (result == 0 && event_return) {
+        static int count = 0;
+        if (++count <= 5) {
+            HOOK_LOG("[Toolscreen] XEVENT: type=%d keycode=%u\n",
+                     event_return->type, event_return->xkey.keycode);
+        }
+    }
+    return result;
 }
 
 bool CreateHook(void* target, void* detour, void** original) {
