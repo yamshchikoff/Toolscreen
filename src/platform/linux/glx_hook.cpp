@@ -346,15 +346,15 @@ static void TRACE_CALL(const char* msg) {
 // Кладёт событие в очередь ДО вызова трамплина (tail call — jmp, не call).
 // Обработка — в hk_glXSwapBuffers (рендер-поток).
 static int (*g_realXNextEvent)(Display*, XEvent*) = nullptr;
-static thread_local XEvent* tls_pendingEvent = nullptr;
+// static, не thread_local: thread_local вызывает __tls_get_addr → ломает стек X11.
+// XNextEvent всегда под XLockDisplay — многопоточность не нужна (один Display).
+static XEvent* s_pendingEvent = nullptr;
 
 int DetourXNextEvent(Display* display, XEvent* event_return) {
     if (!g_realXNextEvent) return -1;
     if (event_return) {
-        tls_pendingEvent = event_return;
+        s_pendingEvent = event_return;
     }
-    // musttail: принудительный tail call (jmp вместо call).
-    // Без этого компилятор генерирует call → ломает X11-стек → краш.
     [[gnu::musttail]] return g_realXNextEvent(display, event_return);
 }
 
@@ -665,9 +665,8 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
                 io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
             }
             // Выгребаем клавиатурные события из XNextEvent-хука
-            // (thread-local, сохранено ДО tail call)
-            if (XEvent* ev = tls_pendingEvent) {
-                tls_pendingEvent = nullptr;
+            if (XEvent* ev = s_pendingEvent) {
+                s_pendingEvent = nullptr;
                 if (ev->type == KeyPress || ev->type == KeyRelease) {
                     static int keyCount = 0;
                     if (++keyCount <= 10) {
