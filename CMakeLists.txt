@@ -78,6 +78,7 @@ else()
         ${TOOLSCREEN_PLATFORM_DIR}/glx_hook.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/hotkey_detect.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/x11_event_filter.cpp
+        ${TOOLSCREEN_PLATFORM_DIR}/x86_length_disasm.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/x11_input.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/x11_capture.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/x11_cursor.cpp
@@ -1670,6 +1671,38 @@ if(UNIX AND NOT APPLE)
         add_test(
             NAME toolscreen_inline_hook_${test_case}
             COMMAND $<TARGET_FILE:toolscreen_inline_hook_tests> --run ${test_case}
+        )
+    endforeach()
+
+    add_executable(toolscreen_x86_length_disasm_tests
+        tests/x86_length_disasm_tests.cpp
+        ${TOOLSCREEN_PLATFORM_DIR}/x86_length_disasm.cpp
+    )
+
+    target_include_directories(toolscreen_x86_length_disasm_tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+
+    target_compile_definitions(toolscreen_x86_length_disasm_tests PRIVATE
+        NOMINMAX
+    )
+
+    toolscreen_configure_target_outputs(toolscreen_x86_length_disasm_tests)
+    toolscreen_enable_release_symbols(toolscreen_x86_length_disasm_tests)
+
+    set(TOOLSCREEN_X86_LENGTH_DISASM_TEST_CASES
+        endbr64_exact_four
+        endbr64_plus_push_5
+        push_plus_mov_3
+        mov_disp32_7bytes
+        test_plus_je_5
+        xnext_prologue_5
+    )
+
+    foreach(test_case IN LISTS TOOLSCREEN_X86_LENGTH_DISASM_TEST_CASES)
+        add_test(
+            NAME toolscreen_x86_length_disasm_${test_case}
+            COMMAND $<TARGET_FILE:toolscreen_x86_length_disasm_tests> --run ${test_case}
         )
     endforeach()
 endif()

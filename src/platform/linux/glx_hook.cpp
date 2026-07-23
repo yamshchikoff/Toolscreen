@@ -12,6 +12,7 @@
 #include "platform/linux/x11_input.h"
 #include "platform/linux/hotkey_detect.h"
 #include "platform/linux/x11_event_filter.h"
+#include "platform/linux/x86_length_disasm.h"
 #include "gui/imgui_impl_x11.h"
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
@@ -76,8 +77,8 @@ namespace {
 // For same-process .so injection this is always satisfied.
 
 constexpr size_t kJumpSize     = 5;   // jmp rel32 (atomic at target)
-constexpr size_t kBackupSize   = 16;  // bytes to backup (must cover ≥ kJumpSize
-                                      // and align to instruction boundary)
+constexpr size_t kMaxBackup    = 32;  // макс. размер пролога (буфер в HookEntry)
+                                      // Реальный размер вычисляется X86InsnMinCover()
 constexpr size_t kAtomSize     = 8;   // atomic write alignment
 constexpr size_t kBridgeSize   = 64;  // small page for bridge trampoline
 constexpr size_t kTrampSize    = 128; // trampoline allocation
@@ -86,8 +87,9 @@ struct HookEntry {
     void* target;
     void* detour;
     void* bridge;              // Near-target jump bridge (for >2GB)
-    void* trampoline;          // Callable original: backup bytes + jmp target+5
-    uint8_t backup[kBackupSize]; // Original bytes at target
+    void* trampoline;          // Callable original: backup bytes + jmp to target+backupLen
+    uint8_t backup[kMaxBackup];  // Original bytes at target (real len = backupLen)
+    size_t backupLen;          // Actual instruction-aligned backup size
     size_t bridgeSize;         // Size of bridge allocation
     size_t trampolineSize;     // Size of trampoline allocation
     bool enabled;
@@ -151,7 +153,7 @@ static void* AllocateNear(void* near_addr, size_t size) {
 // Requires |dest - target| < 2GB. Returns true on success.
 static bool WriteRelJump(void* target, void* destination, uint8_t* backup) {
     // Backup enough bytes for the trampoline to execute a full prologue
-    memcpy(backup, target, kBackupSize);
+    memcpy(backup, target, kMaxBackup);
 
     size_t span = PageSpan(target, kJumpSize);
     if (mprotect(PageAlign(target), span, PROT_READ | PROT_WRITE | PROT_EXEC) != 0) {
@@ -371,23 +373,35 @@ bool CreateHook(void* target, void* detour, void** original) {
     entry.detour = detour;
     entry.enabled = false;
 
+    // Вычисляем размер backup с выравниванием по границам инструкций.
+    // X86InsnMinCover гарантирует, что трамплин прыгнет на границу инструкции,
+    // а не в середину (как было с хардкодным kBackupSize=16).
+    size_t backupLen = X86InsnMinCover(
+        static_cast<const uint8_t*>(target), kJumpSize, kMaxBackup);
+    if (backupLen < kJumpSize) {
+        DBG_TRACE("[Toolscreen] CreateHook: X86InsnMinCover failed\n");
+        return false;
+    }
+    entry.backupLen = backupLen;
+
     // Install the jump from target to detour (via bridge if >2GB)
+    // WriteRelJump copies kMaxBackup bytes into backup buffer
     if (!InstallJump(target, detour, entry.backup)) {
         DBG_TRACE("[Toolscreen] CreateHook: InstallJump failed\n");
         return false;
     }
 
-    // Create callable trampoline: [backup kBackupSize bytes] [jmp to target+kBackupSize]
-    // kBackupSize (16) covers the full function prologue (endbr64 + mov + ...)
-    // so the jump lands on a proper instruction boundary, not mid-instruction.
+    // Create callable trampoline: [backupLen bytes] [jmp to target+backupLen]
+    // Трамплин исполняет backupLen байт оригинала, затем прыгает на target+backupLen —
+    // гарантированно на границу инструкции.
     size_t trampSize = kTrampSize;
     void* tramp = mmap(nullptr, trampSize, PROT_READ | PROT_WRITE | PROT_EXEC,
                        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (tramp != MAP_FAILED) {
-        memcpy(tramp, entry.backup, kBackupSize);
-        uint8_t* jmp = static_cast<uint8_t*>(tramp) + kBackupSize;
+        memcpy(tramp, entry.backup, backupLen);
+        uint8_t* jmp = static_cast<uint8_t*>(tramp) + backupLen;
         jmp[0] = 0xE9;
-        int64_t rel = (static_cast<uint8_t*>(target) + kBackupSize) - (jmp + 5);
+        int64_t rel = (static_cast<uint8_t*>(target) + backupLen) - (jmp + 5);
         int32_t rel32 = static_cast<int32_t>(rel);
         memcpy(&jmp[1], &rel32, 4);
         mprotect(tramp, trampSize, PROT_READ | PROT_EXEC);
