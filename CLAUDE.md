@@ -27,6 +27,7 @@
 - **ТОЛЬКО ИНЖЕКТОР.** Никаких подмен Java-файлов, никаких LD_PRELOAD-обёрток. Только `sudo ./scripts/inject.sh`.
 - **Сборка всегда с `--parallel $(nproc)`.** `cmake --build out/build/linux-test --parallel $(nproc)`
 - **Подходы к перехвату клавиатуры документируются в [`docs/keyboard_interception_approaches.md`](docs/keyboard_interception_approaches.md).** Каждый новый подход — до начала реализации. После проверки — статус и урок. Без этого файла рискуем ходить по кругу.
+- **Перед реализацией inline-хуков — читать сгенерированный компилятором код.** `objdump -d` на функцию-хук. Разница между `call` и `jmp` (tail call) критична: лишний стек-фрейм внутри X11-функций ломает XLockDisplay/XUnlockDisplay. Случай с `DetourXNextEvent` — урок.
 
 ## Инжектор и отладка
 
