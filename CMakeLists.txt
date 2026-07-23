@@ -1640,5 +1640,37 @@ if(UNIX AND NOT APPLE)
             COMMAND $<TARGET_FILE:toolscreen_x11_event_filter_tests> --run ${test_case}
         )
     endforeach()
+
+    add_executable(toolscreen_inline_hook_tests
+        tests/inline_hook_tests.cpp
+    )
+
+    target_include_directories(toolscreen_inline_hook_tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${X11_X11_INCLUDE_PATH}
+        ${OPENGL_INCLUDE_DIR}
+    )
+
+    target_compile_definitions(toolscreen_inline_hook_tests PRIVATE
+        NOMINMAX
+    )
+
+    target_link_libraries(toolscreen_inline_hook_tests PRIVATE
+        ${CMAKE_DL_LIBS}
+    )
+
+    toolscreen_configure_target_outputs(toolscreen_inline_hook_tests)
+    toolscreen_enable_release_symbols(toolscreen_inline_hook_tests)
+
+    set(TOOLSCREEN_INLINE_HOOK_TEST_CASES
+        hook_redirects_to_detour
+    )
+
+    foreach(test_case IN LISTS TOOLSCREEN_INLINE_HOOK_TEST_CASES)
+        add_test(
+            NAME toolscreen_inline_hook_${test_case}
+            COMMAND $<TARGET_FILE:toolscreen_inline_hook_tests> --run ${test_case}
+        )
+    endforeach()
 endif()
 

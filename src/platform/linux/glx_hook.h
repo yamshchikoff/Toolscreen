@@ -73,6 +73,9 @@ void hk_glBlitFramebuffer(GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1,
                           GLint dstX0, GLint dstY0, GLint dstX1, GLint dstY1,
                           GLbitfield mask, GLenum filter);
 
+// XNextEvent inline-hook detour (подход 3)
+int DetourXNextEvent(Display* display, XEvent* event_return);
+
 // Store original function pointers
 extern std::atomic<SwapBuffersFunc> g_realSwapBuffers;
 

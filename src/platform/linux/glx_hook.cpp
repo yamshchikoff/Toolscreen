@@ -330,6 +330,20 @@ static std::vector<XEvent> DequeueKeyEvents() {
     return result;
 }
 
+// ---- Inline-hook detour для XNextEvent (подход 3) ----
+// Вызывается вместо XNextEvent после установки хука.
+// Вызывает оригинал через trampoline, затем кладёт клавиатурные события в очередь.
+static int (*g_realXNextEvent)(Display*, XEvent*) = nullptr;
+
+int DetourXNextEvent(Display* display, XEvent* event_return) {
+    if (!g_realXNextEvent) return -1;
+    int result = g_realXNextEvent(display, event_return);
+    if (result == 0 && event_return && IsKeyEvent(*event_return)) {
+        EnqueueKeyEvent(*event_return);
+    }
+    return result;
+}
+
 // Utility log functions (available to all functions in GLXHook namespace)
 static void HOOK_LOG(const char* fmt, ...) {
     FILE* f = fopen("/home/user/toolscreen.log", "a");
@@ -513,33 +527,6 @@ void glBlitFramebuffer(GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1,
         g_realBlitFramebuffer = reinterpret_cast<BlitFramebufferFunc>(dlsym(RTLD_NEXT, "glBlitFramebuffer"));
     });
     hk_glBlitFramebuffer(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter);
-}
-
-// ---- XNextEvent interposer ----
-// Перехватывает клавиатурные события ДО игры (PUSH-модель, аналог WndProc).
-// Кладёт KeyPress/KeyRelease в потокобезопасную очередь для обработки в swap.
-static int (*real_XNextEvent)(Display*, XEvent*) = nullptr;
-static std::once_flag g_xnextEventOnceFlag;
-
-__attribute__((used))
-int XNextEvent(Display* display, XEvent* event_return) {
-    std::call_once(g_xnextEventOnceFlag, []() {
-        real_XNextEvent = reinterpret_cast<int (*)(Display*, XEvent*)>(
-            dlsym(RTLD_NEXT, "XNextEvent"));
-        if (!real_XNextEvent) {
-            HOOK_LOG("[Toolscreen] FATAL: dlsym(XNextEvent) failed\n");
-        }
-    });
-
-    if (!real_XNextEvent) return -1;
-
-    int result = real_XNextEvent(display, event_return);
-
-    if (result == 0 && event_return && IsKeyEvent(*event_return)) {
-        EnqueueKeyEvent(*event_return);
-    }
-
-    return result;
 }
 
 } // extern "C"
@@ -836,6 +823,33 @@ void InstallRuntimeHook() {
         HOOK_LOG("[Toolscreen] Dispatch table patched: %p → %p\n", origFunc, *slot);
         TRACE_CALL("[Toolscreen] InstallRuntimeHook: dispatch hook OK\n");
     });
+
+    // Inline-hook XNextEvent (подход 3) — перехват клавиатуры до игры.
+    // Тоже в конструкторе (gdb морозит потоки → mprotect безопасен).
+    static std::once_flag s_xnextFlag;
+    std::call_once(s_xnextFlag, []() {
+        TRACE_CALL("[Toolscreen] InstallRuntimeHook: XNextEvent hook attempt\n");
+        void* xnext = dlsym(RTLD_DEFAULT, "XNextEvent");
+        if (!xnext) {
+            void* libx11 = dlopen("libX11.so.6", RTLD_LAZY | RTLD_NOLOAD);
+            if (libx11) xnext = dlsym(libx11, "XNextEvent");
+        }
+        if (!xnext) {
+            HOOK_LOG("[Toolscreen] XNextEvent not found — inline hook skipped\n");
+            return;
+        }
+        HOOK_LOG("[Toolscreen] XNextEvent at %p — installing inline hook\n", xnext);
+
+        void* trampoline = nullptr;
+        if (CreateHook(xnext, reinterpret_cast<void*>(DetourXNextEvent), &trampoline)) {
+            g_realXNextEvent = reinterpret_cast<int (*)(Display*, XEvent*)>(trampoline);
+            HOOK_LOG("[Toolscreen] XNextEvent inline hook installed (trampoline=%p)\n",
+                     trampoline);
+        } else {
+            HOOK_LOG("[Toolscreen] XNextEvent inline hook FAILED\n");
+        }
+    });
+
     TRACE_CALL("[Toolscreen] InstallRuntimeHook: exit\n");
 }
 

@@ -8,7 +8,7 @@
 |---|--------|----------|--------|---------------------------|
 | 1 | PULL — `XCheckMaskEvent` | Поллинг очереди X11 в `PollEvents()` | ❌ Не работает | Игра (LWJGL/GLFW) дренирует очередь на своём потоке до нашего полла |
 | 2 | PUSH — `XNextEvent` LD_PRELOAD interposer | `extern "C"` + `dlsym(RTLD_NEXT)` | ❌ Не работает | `gdb dlopen` не подменяет символы — LD_PRELOAD не участвует |
-| 3 | PUSH — inline-хук `XNextEvent` | `InstallJump`/`WriteRelJump` (5-байтовый jmp) | Запланирован | — |
+| 3 | PUSH — inline-хук `XNextEvent` | `CreateHook` → `InstallJump` (5-байтовый jmp rel32) | ✅ Реализован | Коммит TBD |
 
 ---
 
@@ -36,20 +36,21 @@
 
 ---
 
-## Подход 3: PUSH — inline-хук XNextEvent (запланирован)
+## Подход 3: PUSH — inline-хук XNextEvent (реализован)
 
-**Суть**: использовать существующий движок инлайн-хуков (`InstallJump`/`WriteRelJump`/`AllocateNear` в `glx_hook.cpp`) для патча первых 5 байт `XNextEvent` в libX11.so на jump в наш обработчик. Патч делать в конструкторе (gdb морозит все потоки → mprotect безопасен).
+**Суть**: использовать существующий движок инлайн-хуков (`CreateHook` → `InstallJump`/`WriteRelJump`/`AllocateNear`) для патча первых 5 байт `XNextEvent` в libX11.so на jump в `DetourXNextEvent`. Патч в конструкторе (gdb морозит все потоки → mprotect безопасен).
 
-**План**:
+**Реализация**:
 1. `dlsym(RTLD_DEFAULT, "XNextEvent")` → адрес в libX11.so
-2. `WriteRelJump(target, hk_XNextEvent, backup)` — 5-байтовый атомарный jmp rel32
-3. Если расстояние >2GB → bridge-страница через `AllocateNear()`
-4. Трамплин: backup-байты + jmp target+5 для вызова оригинала
+2. `CreateHook(xnext, DetourXNextEvent, &trampoline)` — 5-байтовый атомарный jmp rel32
+3. Если расстояние >2GB — bridge-страница через `AllocateNear()`
+4. `DetourXNextEvent` вызывает оригинал через trampoline, затем `EnqueueKeyEvent()`
 
-**Риски**:
-- Расстояние между .so и libX11 может быть >2GB — нужен bridge
-- Inline-хуки на код в рантайме — TLB shootdown может задеть другие потоки (но в конструкторе gdb морозит все)
-- Нет dispatch-таблицы как у GLX — это именно патч кода
+**Первые 16 байт XNextEvent** (безопасны для патча):
+```
+endbr64; push rbp; mov rsp,rbp; push r12; mov rdi,r12; push rbx
+```
+Ноль RIP-relative инструкций — все 16 байт можно скопировать в трамплин.
 
 ---
 
