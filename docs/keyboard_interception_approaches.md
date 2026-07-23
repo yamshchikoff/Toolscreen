@@ -8,7 +8,7 @@
 |---|--------|----------|--------|---------------------------|
 | 1 | PULL — `XCheckMaskEvent` | Поллинг очереди X11 в `PollEvents()` | ❌ Не работает | Игра (LWJGL/GLFW) дренирует очередь на своём потоке до нашего полла |
 | 2 | PUSH — `XNextEvent` LD_PRELOAD interposer | `extern "C"` + `dlsym(RTLD_NEXT)` | ❌ Не работает | `gdb dlopen` не подменяет символы — LD_PRELOAD не участвует |
-| 3 | PUSH — inline-хук `XNextEvent` | `CreateHook` → `InstallJump` + `X86InsnMinCover` | 🔬 Диагностика: pass-through хук | Игра крашится в libGLX_nvidia при active хуке. Проверяем: pass-through (без нашей логики) → краш? |
+| 3 | PUSH — inline-хук `XNextEvent` | `CreateHook` → `InstallJump` + `X86InsnMinCover` | 🔬 Диагностика: pass-through ✅, полный хук ❌ | Pass-through не крашит → mprotect/libX11 ни при чём. Крашит наша логика в DetourXNextEvent (EnqueueKeyEvent или IsKeyEvent). |
 
 ---
 
@@ -55,6 +55,8 @@ endbr64; push rbp; mov rsp,rbp; push r12; mov rdi,r12; push rbx
 **Найденный баг (исправлен)**: `kBackupSize = 16` рвал 7-байтовый `mov 0x968(%rdi),%rax` пополам. Трамплин прыгал в середину инструкции → SIGSEGV.
 
 **Исправление** (`5feccbc`): `X86InsnMinCover()` — дизассемблер длин x86-64 инструкций. В `CreateHook` теперь `backupLen = X86InsnMinCover(target, 5, 32)` — гарантирует, что трамплин прыгает на границу инструкции.
+
+**Диагностика** (`feff607`): pass-through хук (только вызов оригинала, без IsKeyEvent/EnqueueKeyEvent/HOTKEY_LOG) — **игра не крашится**. Вывод: mprotect на код libX11 не вызывает краш NVIDIA. Проблема в нашей логике внутри DetourXNextEvent.
 
 > ⚠️ **Количество кадров в логе (Frame N) не означает что игра работала N кадров.** Счётчик крутится от фонового рендера ДО инжекта. Краш происходит на первом «настоящем» кадре после возврата в игру. См. CLAUDE.md.
 
