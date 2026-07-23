@@ -26,6 +26,7 @@
 - **fprintf(stderr) НЕ РАБОТАЕТ в Minecraft.** Всегда используй HOOK_LOG() или TS_LOG() — они пишут в файл /home/user/toolscreen.log. stderr Minecraft выкидывает.
 - **ТОЛЬКО ИНЖЕКТОР.** Никаких подмен Java-файлов, никаких LD_PRELOAD-обёрток. Только `sudo ./scripts/inject.sh`.
 - **Сборка всегда с `--parallel $(nproc)`.** `cmake --build out/build/linux-test --parallel $(nproc)`
+- **Подходы к перехвату клавиатуры документируются в [`docs/keyboard_interception_approaches.md`](docs/keyboard_interception_approaches.md).** Каждый новый подход — до начала реализации. После проверки — статус и урок. Без этого файла рискуем ходить по кругу.
 
 ## Инжектор и отладка
 
