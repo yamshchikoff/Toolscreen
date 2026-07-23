@@ -34,7 +34,9 @@ OLD_PATTERN=$(cat /proc/sys/kernel/core_pattern)
 echo "/tmp/core.%p.%t" > /proc/sys/kernel/core_pattern
 echo "Core dumps enabled → /tmp/core.*"
 
-# Восстанавливаем core_pattern при выходе
+# Восстанавливаем core_pattern через 10 минут (краш может быть после выхода инжектора)
+# или при Ctrl+C — сразу.
+( sleep 600; echo "$OLD_PATTERN" > /proc/sys/kernel/core_pattern 2>/dev/null ) &
 trap "echo '$OLD_PATTERN' > /proc/sys/kernel/core_pattern 2>/dev/null" EXIT
 
 echo "Инжект..."
