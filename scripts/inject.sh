@@ -30,10 +30,14 @@ echo "PID: $PID"
 prlimit --pid "$PID" --core=unlimited
 
 # Сохраняем и заменяем core_pattern (apport отбрасывает пользовательские корки)
-# Меняем core_pattern на прямую запись в /tmp (apport отбрасывает корки не из пакетов).
-# Не восстанавливаем обратно — пусть корки пишутся для всех, лимиты и так только у Minecraft подняты.
-echo "/tmp/core.%p.%t" > /proc/sys/kernel/core_pattern
-echo "Core dumps → /tmp/core.*"
+# Меняем core_pattern: пишем корки ТОЛЬКО для процесса Minecraft.
+# save_core.sh фильтрует по PID — остальные идут в apport.
+OLD_PATTERN=$(cat /proc/sys/kernel/core_pattern)
+echo "|/home/user/Toolscreen/scripts/save_core.sh %p %s %t $PID" > /proc/sys/kernel/core_pattern
+echo "Core dumps enabled for PID $PID → /tmp/core.$PID.*"
+
+# Восстанавливаем оригинальный core_pattern при выходе
+trap "echo '$OLD_PATTERN' > /proc/sys/kernel/core_pattern 2>/dev/null" EXIT
 
 echo "Инжект..."
 
