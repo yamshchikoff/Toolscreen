@@ -29,7 +29,18 @@ def start(args):
         else:
             break
 
-    # Сигнал: сервер готов. Очищаем буфер от init-команд.
+    # Загружаем символы (нужно для `call dlopen`). Может быть долго.
+    child.sendline("sharedlibrary")
+    try:
+        child.expect_exact("(gdb)", timeout=300)
+    except pexpect.TIMEOUT:
+        sys.stdout.write("WARN: sharedlibrary timed out, symbols may be incomplete\n")
+        sys.stdout.flush()
+    except pexpect.EOF:
+        sys.stdout.write("WARN: sharedlibrary EOF\n")
+        sys.stdout.flush()
+
+    # Сигнал: сервер готов.
     child.before = ""
     open(READY, 'w').close()
     sys.stdout.write(f"READY {child.pid}\n")
