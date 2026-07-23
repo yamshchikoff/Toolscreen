@@ -30,14 +30,14 @@ echo "PID: $PID"
 prlimit --pid "$PID" --core=unlimited
 
 # Сохраняем и заменяем core_pattern (apport отбрасывает пользовательские корки)
-OLD_PATTERN=$(cat /proc/sys/kernel/core_pattern)
+# Вырубаем apport (иначе он отбрасывает корки не из пакетов)
+if systemctl is-active --quiet apport 2>/dev/null; then
+    systemctl stop apport apport-autoreport 2>/dev/null || true
+    echo "Apport stopped"
+fi
+# Ставим прямой путь для корок
 echo "/tmp/core.%p.%t" > /proc/sys/kernel/core_pattern
-echo "Core dumps enabled → /tmp/core.*"
-
-# Восстанавливаем core_pattern через 10 минут (краш может быть после выхода инжектора)
-# или при Ctrl+C — сразу.
-( sleep 600; echo "$OLD_PATTERN" > /proc/sys/kernel/core_pattern 2>/dev/null ) &
-trap "echo '$OLD_PATTERN' > /proc/sys/kernel/core_pattern 2>/dev/null" EXIT
+echo "Core dumps → /tmp/core.*"
 
 echo "Инжект..."
 
