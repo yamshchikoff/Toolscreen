@@ -31,13 +31,10 @@ prlimit --pid "$PID" --core=unlimited
 
 # Сохраняем и заменяем core_pattern (apport отбрасывает пользовательские корки)
 # Меняем core_pattern: пишем корки ТОЛЬКО для процесса Minecraft.
-# save_core.sh фильтрует по PID — остальные идут в apport.
-OLD_PATTERN=$(cat /proc/sys/kernel/core_pattern)
+# save_core.sh фильтрует по PID — остальные идут в никуда (но их ulimit -c 0 и так глушит).
+# Не восстанавливаем — краш происходит после выхода инжектора.
 echo "|/home/user/Toolscreen/scripts/save_core.sh %p %s %t $PID" > /proc/sys/kernel/core_pattern
 echo "Core dumps enabled for PID $PID → /tmp/core.$PID.*"
-
-# Восстанавливаем оригинальный core_pattern при выходе
-trap "echo '$OLD_PATTERN' > /proc/sys/kernel/core_pattern 2>/dev/null" EXIT
 
 echo "Инжект..."
 
