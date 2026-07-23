@@ -349,7 +349,7 @@ static int (*g_realXNextEvent)(Display*, XEvent*) = nullptr;
 int DetourXNextEvent(Display* display, XEvent* event_return) {
     if (!g_realXNextEvent) return -1;
     int result = g_realXNextEvent(display, event_return);
-    if (result == 0 && event_return) {
+    if (result == 0 && event_return && IsKeyEvent(*event_return)) {
         static int count = 0;
         if (++count <= 5) {
             HOOK_LOG("[Toolscreen] XEVENT: type=%d keycode=%u\n",
