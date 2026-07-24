@@ -62,6 +62,26 @@ gdbwrap cmd "set scheduler-locking off"
 - **Pass-through хук не крашит**: DetourXNextEvent с чистым `jmp *%rax` (без чтения XEvent) — игра работает стабильно
 - **Трамплин правильный**: `X86InsnMinCover` вернул 5 (endbr64 4 + push 1), трамплин прыгает на XNextEvent+5 = `mov rsp,rbp`
 
+## Проверка inline-хуков после установки
+
+После инжекта и установки inline-хука нужно на паузе проверить корректность:
+
+1. **Патч по адресу**: `x/1i <target>` — первый байт должен быть `jmp <detour>`
+2. **Куда прыгает**: сравнить адрес после `jmp` с ожидаемым адресом detour'а
+3. **Трамплин**: прочитать `g_real<Fn>` (или переменную с адресом трамплина), дизассемблировать — должен содержать сохранённые байты + `jmp target+backupLen`
+4. **Куда прыгает трамплин**: `x/1i <trampoline+backupLen>` — адрес должен быть `target + backupLen`
+5. **Дистанции**: проверить что все `rel32` влезают в ±2GB (трамплин рядом с target'ом, detour рядом с target'ом или bridge)
+
+Пример проверки (сегодня):
+```
+(gdb) x/1i XNextEvent
+   jmp 0x7fa7c0daac10         ; правильно → DetourXNextEvent
+(gdb) x/1gx &g_realXNextEvent
+   0x7fa8e8033000              ; адрес трамплина
+(gdb) x/3i 0x7fa8e8033000
+   endbr64; push rbp; jmp 0x7fa930cf23b5  ; ← БАГ: прыжок на +4GB!
+```
+
 ## Особенности
 
 - JVM генерит внутренние SIGSEGV и SIGSTOP — `handle SIGSEGV nostop pass` + `handle SIGSTOP nostop pass`
