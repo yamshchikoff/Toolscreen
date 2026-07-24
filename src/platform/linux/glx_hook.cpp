@@ -346,10 +346,14 @@ static void TRACE_CALL(const char* msg) {
 // Минимальный pass-through: только передаёт управление оригиналу.
 static int (*g_realXNextEvent)(Display*, XEvent*) = nullptr;
 
+// Для отладки: сохраняем event_return до вызова, чтобы прочитать после.
+static XEvent* volatile g_debugEvent = nullptr;
+
 int DetourXNextEvent(Display* display, XEvent* event_return) {
     if (!g_realXNextEvent) return -1;
+    g_debugEvent = event_return;
     volatile int result = g_realXNextEvent(display, event_return);
-    // volatile запрещает tail call — после возврата событие заполнено
+    // Здесь *g_debugEvent уже заполнен реальным XNextEvent
     return result;
 }
 
