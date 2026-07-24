@@ -8,7 +8,7 @@
 |---|--------|----------|--------|---------------------------|
 | 1 | PULL — `XCheckMaskEvent` | Поллинг очереди X11 в `PollEvents()` | ❌ Не работает | Игра (LWJGL/GLFW) дренирует очередь на своём потоке до нашего полла |
 | 2 | PUSH — `XNextEvent` LD_PRELOAD interposer | `extern "C"` + `dlsym(RTLD_NEXT)` | ❌ Не работает | `gdb dlopen` не подменяет символы — LD_PRELOAD не участвует |
-| 3 | PUSH — inline-хук `XNextEvent` | `CreateHook` → `InstallJump` + `X86InsnMinCover` + `AllocateNear` | ✅ Pass-through работает | BUG-004 исправлен. Полная цепочка проверена в gdb. Игра не крашит. |
+| 3 | PUSH — inline-хук `XNextEvent` | `CreateHook` → `InstallJump` + `X86InsnMinCover` + `AllocateNear` | ✅ События читаются! | EnterNotify (type=7) пойман в gdb. XEvent читается через `g_debugEvent` после возврата из `g_realXNextEvent`. Игра не крашит. |
 
 ---
 
@@ -61,10 +61,16 @@ endbr64; push rbp; mov rsp,rbp; push r12; mov rdi,r12; push rbx
 **Полная проверка в gdb** (2026-07-24):
 - XNextEvent → `jmp` (bridge) — правильно
 - Bridge → `movabs $Detour; jmp *%rax` — правильно  
-- DetourXNextEvent: `endbr64; mov; test; je; jmp *%rax` — правильно (tail call)
+- DetourXNextEvent: `endbr64; mov g_debugEvent,%rsi; call *%rax; ...; ret` — call/ret, не tail call
 - g_realXNextEvent → трамплин (рядом с XNextEvent) — правильно
 - Трамплин: `endbr64; push rbp; jmp XNextEvent+5` — **правильно**
-- Игра с pass-through хуком **работает без краша**
+- Игра **работает без краша**
+
+**Первый перехват события** (2026-07-24):
+- `g_debugEvent = event_return` до вызова `g_realXNextEvent`
+- Брикпинт после `call *%rax` (offset 0x1d от DetourXNextEvent)
+- `g_debugEvent → type = 7` = EnterNotify (мышь вошла в окно)
+- Код: `volatile int result = g_realXNextEvent(...); // здесь *g_debugEvent заполнен`
 
 **Диагностика** (`feff607`): pass-through хук (только вызов оригинала, без IsKeyEvent/EnqueueKeyEvent/HOTKEY_LOG) — **игра не крашится**. Вывод: mprotect на код libX11 не вызывает краш NVIDIA. Проблема в нашей логике внутри DetourXNextEvent.
 
