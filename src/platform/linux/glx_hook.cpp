@@ -353,7 +353,13 @@ int DetourXNextEvent(Display* display, XEvent* event_return) {
     if (!g_realXNextEvent) return -1;
     g_debugEvent = event_return;
     volatile int result = g_realXNextEvent(display, event_return);
-    // Здесь *g_debugEvent уже заполнен реальным XNextEvent
+    // Здесь *g_debugEvent уже заполнен
+    if (g_debugEvent) {
+        if (g_debugEvent->type == KeyPress || g_debugEvent->type == KeyRelease) {
+            HOOK_LOG("[Toolscreen] KEY: type=%d keycode=%u\n",
+                     g_debugEvent->type, g_debugEvent->xkey.keycode);
+        }
+    }
     return result;
 }
 

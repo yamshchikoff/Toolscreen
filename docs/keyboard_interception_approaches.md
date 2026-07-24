@@ -8,7 +8,7 @@
 |---|--------|----------|--------|---------------------------|
 | 1 | PULL — `XCheckMaskEvent` | Поллинг очереди X11 в `PollEvents()` | ❌ Не работает | Игра (LWJGL/GLFW) дренирует очередь на своём потоке до нашего полла |
 | 2 | PUSH — `XNextEvent` LD_PRELOAD interposer | `extern "C"` + `dlsym(RTLD_NEXT)` | ❌ Не работает | `gdb dlopen` не подменяет символы — LD_PRELOAD не участвует |
-| 3 | PUSH — inline-хук `XNextEvent` | `CreateHook` → `InstallJump` + `X86InsnMinCover` + `AllocateNear` | ✅ События читаются! | EnterNotify (type=7) пойман в gdb. XEvent читается через `g_debugEvent` после возврата из `g_realXNextEvent`. Игра не крашит. |
+| 3 | PUSH — inline-хук `XNextEvent` | `CreateHook` → `InstallJump` + `X86InsnMinCover` + `AllocateNear` | ✅ **РАБОТАЕТ** | Z, J, Alt перехвачены. Инжект через `inject.sh` и через gdbwrap. Игра не крашит. |
 
 ---
 
@@ -71,6 +71,12 @@ endbr64; push rbp; mov rsp,rbp; push r12; mov rdi,r12; push rbx
 - Брикпинт после `call *%rax` (offset 0x1d от DetourXNextEvent)
 - `g_debugEvent → type = 7` = EnterNotify (мышь вошла в окно)
 - Код: `volatile int result = g_realXNextEvent(...); // здесь *g_debugEvent заполнен`
+
+**Перехват клавиш — подтверждён** (2026-07-24):
+- `HOOK_LOG` с фильтром `KeyPress`/`KeyRelease` + `xkey.keycode`
+- Z (keycode=52), J (keycode=44), Alt (keycode=64) — все перехвачены
+- Инжект работает и через `inject.sh`, и через gdbwrap
+- Игра стабильна, не крашит
 
 **Диагностика** (`feff607`): pass-through хук (только вызов оригинала, без IsKeyEvent/EnqueueKeyEvent/HOTKEY_LOG) — **игра не крашится**. Вывод: mprotect на код libX11 не вызывает краш NVIDIA. Проблема в нашей логике внутри DetourXNextEvent.
 

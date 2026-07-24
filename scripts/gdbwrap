@@ -21,6 +21,13 @@ def start(args):
     cmdline = " ".join(gdb_args)
     child = pexpect.spawn(cmdline, encoding='utf-8', timeout=60, codec_errors='replace')
 
+    # Фикс: архитектура x86-64 (авто-детект может дать i386)
+    child.sendline("set architecture i386:x86-64")
+    try:
+        child.expect_exact(["(gdb)", "architecture"], timeout=5)
+    except:
+        pass
+
     # Стартовый диалог: ждём (gdb), обрабатывая debuginfod
     while True:
         i = child.expect_exact(["(gdb)", "debuginfod"], timeout=60)
