@@ -389,9 +389,23 @@ bool CreateHook(void* target, void* detour, void** original) {
     // Create callable trampoline: [backupLen bytes] [jmp to target+backupLen]
     // Трамплин исполняет backupLen байт оригинала, затем прыгает на target+backupLen —
     // гарантированно на границу инструкции.
+    // BUG-004 fix: AllocateNear вместо mmap(nullptr) — обратный прыжок должен
+    // влезать в rel32 (±2GB).
     size_t trampSize = kTrampSize;
-    void* tramp = mmap(nullptr, trampSize, PROT_READ | PROT_WRITE | PROT_EXEC,
-                       MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    void* tramp = AllocateNear(target, trampSize);
+    if (!tramp) {
+        // Fallback: mmap + проверка дистанции
+        tramp = mmap(nullptr, trampSize, PROT_READ | PROT_WRITE | PROT_EXEC,
+                     MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (tramp != MAP_FAILED) {
+            int64_t dist = static_cast<uint8_t*>(tramp) -
+                           static_cast<uint8_t*>(target);
+            if (dist > INT32_MAX || dist < INT32_MIN) {
+                munmap(tramp, trampSize);
+                tramp = MAP_FAILED;
+            }
+        }
+    }
     if (tramp != MAP_FAILED) {
         memcpy(tramp, entry.backup, backupLen);
         uint8_t* jmp = static_cast<uint8_t*>(tramp) + backupLen;
