@@ -8,7 +8,7 @@
 |---|--------|----------|--------|---------------------------|
 | 1 | PULL — `XCheckMaskEvent` | Поллинг очереди X11 в `PollEvents()` | ❌ Не работает | Игра (LWJGL/GLFW) дренирует очередь на своём потоке до нашего полла |
 | 2 | PUSH — `XNextEvent` LD_PRELOAD interposer | `extern "C"` + `dlsym(RTLD_NEXT)` | ❌ Не работает | `gdb dlopen` не подменяет символы — LD_PRELOAD не участвует |
-| 3 | PUSH — inline-хук `XNextEvent` | `CreateHook` → `InstallJump` + `X86InsnMinCover` | 🔬 Диагностика: pass-through ✅, HOOK_LOG ✅, IsKeyEvent ❌ | Краш в `IsKeyEvent(*event_return)` — вызов функции с XEvent&. Симптомы: SEGV_MAPERR по адресу в немапленной странице, похоже на corrupted return address на стеке. |
+| 3 | PUSH — inline-хук `XNextEvent` | `CreateHook` → `InstallJump` + `X86InsnMinCover` | ❌ BUG-004: трамплин rel32 обрезается | mmap трамплина в 733 ГБ от XNextEvent — обратный прыжок не влезает в int32_t. Нужен AllocateNear. |
 
 ---
 
