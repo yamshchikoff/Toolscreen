@@ -8,7 +8,7 @@
 |---|--------|----------|--------|---------------------------|
 | 1 | PULL — `XCheckMaskEvent` | Поллинг очереди X11 в `PollEvents()` | ❌ Не работает | Игра (LWJGL/GLFW) дренирует очередь на своём потоке до нашего полла |
 | 2 | PUSH — `XNextEvent` LD_PRELOAD interposer | `extern "C"` + `dlsym(RTLD_NEXT)` | ❌ Не работает | `gdb dlopen` не подменяет символы — LD_PRELOAD не участвует |
-| 3 | PUSH — inline-хук `XNextEvent` | `CreateHook` → `InstallJump` + `X86InsnMinCover` | ❌ BUG-004: трамплин rel32 обрезается | mmap трамплина в 733 ГБ от XNextEvent — обратный прыжок не влезает в int32_t. Нужен AllocateNear. |
+| 3 | PUSH — inline-хук `XNextEvent` | `CreateHook` → `InstallJump` + `X86InsnMinCover` + `AllocateNear` | ✅ Pass-through работает | BUG-004 исправлен. Полная цепочка проверена в gdb. Игра не крашит. |
 
 ---
 
@@ -55,6 +55,16 @@ endbr64; push rbp; mov rsp,rbp; push r12; mov rdi,r12; push rbx
 **Найденный баг (исправлен)**: `kBackupSize = 16` рвал 7-байтовый `mov 0x968(%rdi),%rax` пополам. Трамплин прыгал в середину инструкции → SIGSEGV.
 
 **Исправление** (`5feccbc`): `X86InsnMinCover()` — дизассемблер длин x86-64 инструкций. В `CreateHook` теперь `backupLen = X86InsnMinCover(target, 5, 32)` — гарантирует, что трамплин прыгает на границу инструкции.
+
+**BUG-004: трамплин rel32 обрезается** (`542dd15`). `CreateHook` выделял трамплин через `mmap(nullptr)` — он попадал в 733 ГБ от XNextEvent. Обратный `jmp rel32` не влезал в `int32_t` → обрезался → прыжок на +4GB → SIGSEGV. Исправлено: `AllocateNear(target)` для трамплина.
+
+**Полная проверка в gdb** (2026-07-24):
+- XNextEvent → `jmp` (bridge) — правильно
+- Bridge → `movabs $Detour; jmp *%rax` — правильно  
+- DetourXNextEvent: `endbr64; mov; test; je; jmp *%rax` — правильно (tail call)
+- g_realXNextEvent → трамплин (рядом с XNextEvent) — правильно
+- Трамплин: `endbr64; push rbp; jmp XNextEvent+5` — **правильно**
+- Игра с pass-through хуком **работает без краша**
 
 **Диагностика** (`feff607`): pass-through хук (только вызов оригинала, без IsKeyEvent/EnqueueKeyEvent/HOTKEY_LOG) — **игра не крашится**. Вывод: mprotect на код libX11 не вызывает краш NVIDIA. Проблема в нашей логике внутри DetourXNextEvent.
 
