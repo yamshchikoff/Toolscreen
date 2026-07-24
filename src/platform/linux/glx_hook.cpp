@@ -348,7 +348,9 @@ static int (*g_realXNextEvent)(Display*, XEvent*) = nullptr;
 
 int DetourXNextEvent(Display* display, XEvent* event_return) {
     if (!g_realXNextEvent) return -1;
-    return g_realXNextEvent(display, event_return);
+    volatile int result = g_realXNextEvent(display, event_return);
+    // volatile запрещает tail call — после возврата событие заполнено
+    return result;
 }
 
 bool CreateHook(void* target, void* detour, void** original) {
