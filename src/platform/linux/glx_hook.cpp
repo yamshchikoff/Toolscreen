@@ -343,19 +343,12 @@ static void TRACE_CALL(const char* msg) {
 }
 
 // ---- Inline-hook detour для XNextEvent (подход 3) ----
-// Кладёт событие в очередь ДО вызова трамплина (tail call — jmp, не call).
-// Обработка — в hk_glXSwapBuffers (рендер-поток).
+// Минимальный pass-through: только передаёт управление оригиналу.
 static int (*g_realXNextEvent)(Display*, XEvent*) = nullptr;
-// static, не thread_local: thread_local вызывает __tls_get_addr → ломает стек X11.
-// XNextEvent всегда под XLockDisplay — многопоточность не нужна (один Display).
-static XEvent* s_pendingEvent = nullptr;
 
 int DetourXNextEvent(Display* display, XEvent* event_return) {
     if (!g_realXNextEvent) return -1;
-    if (event_return) {
-        s_pendingEvent = event_return;
-    }
-    [[gnu::musttail]] return g_realXNextEvent(display, event_return);
+    return g_realXNextEvent(display, event_return);
 }
 
 bool CreateHook(void* target, void* detour, void** original) {
