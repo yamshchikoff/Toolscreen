@@ -181,6 +181,12 @@ bool Load(int screenW, int screenH) {
                 continue;
             }
 
+            // Кап высоты до screenHeight: значения > screenHeight (как EyeZoom 16384)
+            // это viewport, а не window. Viewport clamping — отдельно через hk_glViewport.
+            if (b.height > screenH) {
+                b.height = screenH;
+            }
+
             logToFile("[ResizeConfig] keycode=%u → %dx%d (%s)\n",
                      b.keycode, b.width, b.height,
                      hk["mode"].get<std::string>().c_str());

@@ -217,12 +217,8 @@ bool RequestWindowResize(Window win, int width, int height) {
     XConfigureWindow(dpy, win, CWWidth | CWHeight, &changes);
     XFlush(dpy);
 
-    // Проверим что получилось
-    XWindowAttributes attrs;
-    if (XGetWindowAttributes(dpy, win, &attrs)) {
-        f = fopen("/home/user/toolscreen.log", "a");
-        if (f) { fprintf(f, "[Toolscreen] RequestWindowResize: actual size now %dx%d\n", attrs.width, attrs.height); fflush(f); fclose(f); }
-    }
+    f = fopen("/home/user/toolscreen.log", "a");
+    if (f) { fprintf(f, "[Toolscreen] RequestWindowResize: XConfigureWindow done\n"); fflush(f); fclose(f); }
     return true;
 }
 
