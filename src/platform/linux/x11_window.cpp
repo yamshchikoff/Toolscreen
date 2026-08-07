@@ -23,6 +23,7 @@ Window g_gameWindow = 0;
 Atom g_netWmState = None;
 Atom g_netWmStateFullscreen = None;
 Atom g_netWmStateHidden = None;
+Atom g_netMoveResize = None;
 
 void InitAtoms() {
     Display* dpy = X11Display::Get();
@@ -31,6 +32,7 @@ void InitAtoms() {
     g_netWmState = XInternAtom(dpy, "_NET_WM_STATE", False);
     g_netWmStateFullscreen = XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", False);
     g_netWmStateHidden = XInternAtom(dpy, "_NET_WM_STATE_HIDDEN", False);
+    g_netMoveResize = XInternAtom(dpy, "_NET_MOVERESIZE_WINDOW", False);
 }
 
 } // namespace
@@ -147,19 +149,22 @@ bool RequestWindowResize(Window win, int width, int height) {
     Display* dpy = X11Display::Get();
     if (!dpy || !win) return false;
 
-    // Попытка 4: XPutBackEvent — кладём ConfigureNotify прямо в очередь приложения
-    XConfigureEvent cfg;
-    memset(&cfg, 0, sizeof(cfg));
-    cfg.type = ConfigureNotify;
-    cfg.display = dpy;
-    cfg.window = win;
-    cfg.width = width;
-    cfg.height = height;
-    cfg.border_width = 0;
-    cfg.above = None;
-    cfg.override_redirect = False;
+    InitAtoms();
 
-    XPutBackEvent(dpy, reinterpret_cast<XEvent*>(&cfg));
+    // Попытка 5: EWMH _NET_MOVERESIZE_WINDOW — просим WM ресайзнуть окно
+    XEvent ev;
+    memset(&ev, 0, sizeof(ev));
+    ev.xclient.type = ClientMessage;
+    ev.xclient.window = win;
+    ev.xclient.message_type = g_netMoveResize;
+    ev.xclient.format = 32;
+    ev.xclient.data.l[0] = StaticGravity;  // gravity
+    ev.xclient.data.l[1] = width;          // value mask: width
+    ev.xclient.data.l[2] = height;         // value mask: height
+
+    Window root = RootWindow(dpy, DefaultScreen(dpy));
+    XSendEvent(dpy, root, False,
+               SubstructureRedirectMask | SubstructureNotifyMask, &ev);
     X11Display::Flush();
     return true;
 }
