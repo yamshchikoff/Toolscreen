@@ -64,8 +64,9 @@ def start(args):
             if cmd_text:
                 os.remove(CMD)
                 if cmd_text == "__INTERRUPT__":
-                    # Посылаем Ctrl+C через PTY
-                    child.sendintr()
+                    # Посылаем SIGINT напрямую процессу gdb
+                    import signal
+                    os.kill(child.pid, signal.SIGINT)
                     try:
                         child.expect_exact("(gdb)", timeout=10)
                     except pexpect.TIMEOUT:
