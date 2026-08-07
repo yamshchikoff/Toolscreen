@@ -151,20 +151,11 @@ bool RequestWindowResize(Window win, int width, int height) {
 
     InitAtoms();
 
-    // Попытка 5: EWMH _NET_MOVERESIZE_WINDOW — просим WM ресайзнуть окно
-    XEvent ev;
-    memset(&ev, 0, sizeof(ev));
-    ev.xclient.type = ClientMessage;
-    ev.xclient.window = win;
-    ev.xclient.message_type = g_netMoveResize;
-    ev.xclient.format = 32;
-    ev.xclient.data.l[0] = StaticGravity;  // gravity
-    ev.xclient.data.l[1] = width;          // value mask: width
-    ev.xclient.data.l[2] = height;         // value mask: height
-
-    Window root = RootWindow(dpy, DefaultScreen(dpy));
-    XSendEvent(dpy, root, False,
-               SubstructureRedirectMask | SubstructureNotifyMask, &ev);
+    // Попытка 5: XConfigureWindow — прямое изменение размера окна
+    XWindowChanges changes;
+    changes.width = width;
+    changes.height = height;
+    XConfigureWindow(dpy, win, CWWidth | CWHeight, &changes);
     X11Display::Flush();
     return true;
 }
