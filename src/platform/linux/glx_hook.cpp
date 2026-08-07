@@ -12,6 +12,7 @@
 #include "platform/linux/x11_input.h"
 #include "platform/linux/hotkey_detect.h"
 #include "platform/linux/x11_event_filter.h"
+#include "platform/linux/x11_window.h"
 #include "platform/linux/x86_length_disasm.h"
 #include "gui/imgui_impl_x11.h"
 #include "imgui.h"
@@ -358,6 +359,14 @@ int DetourXNextEvent(Display* display, XEvent* event_return) {
         if (g_debugEvent->type == KeyPress || g_debugEvent->type == KeyRelease) {
             HOOK_LOG("[Toolscreen] KEY: type=%d keycode=%u\n",
                      g_debugEvent->type, g_debugEvent->xkey.keycode);
+        }
+        // Минимальный тест Wide: LAlt → ресайз 800x600
+        if (g_debugEvent->type == KeyPress && g_debugEvent->xkey.keycode == 64) {
+            HOOK_LOG("[Toolscreen] ALT: resize to 800x600\n");
+            Window win = X11Display::GetGameWindow();
+            if (win) {
+                X11Window::RequestWindowResize(win, 800, 600);
+            }
         }
     }
     return result;

@@ -1633,6 +1633,9 @@ if(UNIX AND NOT APPLE)
         keyrelease_is_key_event
         motion_not_key_event
         button_not_key_event
+        alt_keycode_64_is_hotkey
+        z_keycode_52_not_alt
+        zero_keycode_not_alt
     )
 
     foreach(test_case IN LISTS TOOLSCREEN_X11_EVENT_FILTER_TEST_CASES)

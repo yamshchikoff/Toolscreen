@@ -44,6 +44,18 @@ void ButtonPressIsNotKeyEvent() {
     CheckBool(IsKeyEvent(ev), false, "ButtonPress");
 }
 
+void AltKeycode64IsHotkey() {
+    CheckBool(IsAltHotkey(64), true, "keycode 64 (LAlt)");
+}
+
+void ZKeycode52IsNotAltHotkey() {
+    CheckBool(IsAltHotkey(52), false, "keycode 52 (Z) не LAlt");
+}
+
+void ZeroKeycodeIsNotAltHotkey() {
+    CheckBool(IsAltHotkey(0), false, "keycode 0 не LAlt");
+}
+
 }  // namespace
 
 struct TestCase {
@@ -57,6 +69,9 @@ const std::vector<TestCase>& Registry() {
         {"keyrelease_is_key_event", &KeyReleaseIsKeyEvent},
         {"motion_not_key_event",    &MotionNotifyIsNotKeyEvent},
         {"button_not_key_event",    &ButtonPressIsNotKeyEvent},
+        {"alt_keycode_64_is_hotkey", &AltKeycode64IsHotkey},
+        {"z_keycode_52_not_alt",     &ZKeycode52IsNotAltHotkey},
+        {"zero_keycode_not_alt",     &ZeroKeycodeIsNotAltHotkey},
     };
     return cases;
 }
