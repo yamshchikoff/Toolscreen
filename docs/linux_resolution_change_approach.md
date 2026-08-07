@@ -16,7 +16,7 @@
 ~~В `DetourXNextEvent`, при нажатии LAlt, дёрнуть `X11Window::RequestWindowResize(win, 800, 600)` напрямую.~~ **НЕ СРАБОТАЛО**: Z ловится, `RequestWindowResize` вызывается, но `XResizeWindow` игнорируется WM — окно не меняет размер.
 
 **Следующая попытка**: `XSendEvent(ConfigureRequest)` — **НЕ СРАБОТАЛО**.
-**Затем**: `XMoveResizeWindow` + синтетический `ConfigureNotify` — **НЕ СРАБОТАЛО**.
+**Затем**: `XMoveResizeWindow` + синтетический `ConfigureNotify` — **НЕ СРАБОТАЛО**. GDB показал: код ресайза выкинут компилятором из бинарника (только fopen/vfprintf/fclose от HOOK_LOG, затем эпилог). Call к `RequestWindowResize` отсутствует.
 
 Следующий шаг: `XConfigureWindow`?
 
