@@ -1,4 +1,6 @@
-# Подход: смена разрешения по хоткеям на Linux
+# Подход: Wide по LAlt на Linux
+
+> **Scope**: только Wide (LAlt, keycode=64). Thin (Z) и EyeZoom (J) — потом.
 
 ## Что уже работает
 
@@ -36,9 +38,9 @@ bool RequestWindowClientResize(HWND hwnd, int width, int height, const char* sou
 
 После этого вся цепочка `SwitchToMode → StartModeTransition → RequestWindowClientResize → XResizeWindow` заработает.
 
-### Шаг 3: подключить SwitchToMode к DetourXNextEvent
+### Шаг 3: LAlt → SwitchToMode("Wide")
 
-В `DetourXNextEvent` добавить вызов `SwitchToMode(targetMode)` при совпадении хоткея. Для начала — хардкод: keycode 64 → `SwitchToMode("Wide")`.
+В `DetourXNextEvent`: если keycode == 64 и KeyPress → `SwitchToMode("Wide")`.
 
 **Файл**: `glx_hook.cpp`
 
@@ -46,20 +48,9 @@ bool RequestWindowClientResize(HWND hwnd, int width, int height, const char* sou
 
 Если deadlock — вынести вызов `SwitchToMode` из `DetourXNextEvent` в `hk_glXSwapBuffers` (рендер-поток), через очередь событий.
 
-### Шаг 4: полноценная маршрутизация хоткеев
+### Шаг 4: добавить остальные хоткеи (Z→Thin, J→EyeZoom)
 
-Вместо хардкода — таблица соответствия keycode → mode:
-```cpp
-if (type == KeyPress) {
-    switch (keycode) {
-        case 52: SwitchToMode("Thin"); break;       // Z
-        case 44: SwitchToMode("EyeZoom"); break;     // J
-        case 64: SwitchToMode("Wide"); break;        // LAlt
-    }
-}
-```
-
-Учесть toggle: если уже в этом режиме — вернуться в Fullscreen.
+После того как Wide заработает — добавить Z и J по тому же принципу.
 
 ### Шаг 5: viewport clamping (hk_glViewport)
 
