@@ -15,7 +15,10 @@
 
 ~~В `DetourXNextEvent`, при нажатии LAlt, дёрнуть `X11Window::RequestWindowResize(win, 800, 600)` напрямую.~~ **НЕ СРАБОТАЛО**: Z ловится, `RequestWindowResize` вызывается, но `XResizeWindow` игнорируется WM — окно не меняет размер.
 
-**Следующая попытка**: `XSendEvent` с `ConfigureRequest` (имитация запроса от WM) или `XMoveResizeWindow` + `XSetWMNormalHints`. Если не поможет — `XConfigureWindow` с `CWWidth`/`CWHeight`.
+**Следующая попытка**: `XSendEvent(ConfigureRequest)` — **НЕ СРАБОТАЛО**.
+**Затем**: `XMoveResizeWindow` + синтетический `ConfigureNotify` — **НЕ СРАБОТАЛО**.
+
+Следующий шаг: `XConfigureWindow`?
 
 **Файл**: `glx_hook.cpp` — DetourXNextEvent
 
