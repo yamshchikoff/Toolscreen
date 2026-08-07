@@ -22,8 +22,8 @@
             "keycode": 64,
             "mode": "Wide",
             "width": "roundEven(screenWidth * 0.98)",
-            "height": "screenHeight",
-            "comment": "98% ширины, полная высота экрана"
+            "height": 0.25,
+            "comment": "98% ширины, высота 0.25 (четверть экрана)"
         }
     ],
     "notes": {
