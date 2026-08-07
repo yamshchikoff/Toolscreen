@@ -786,9 +786,6 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
         }
     }
 
-    // PoC: зажать viewport в 100x100 — проверить механизм
-    glViewport(0, 0, 100, 100);
-
     // Call the real SwapBuffers via saved dispatch table pointer.
     inHkSwap = false;
     auto* realImpl = g_realSwapBuffers.load(std::memory_order_acquire);
@@ -806,11 +803,10 @@ void hk_glViewport(GLint x, GLint y, GLsizei width, GLsizei height) {
         return;
     }
 
-    // TODO: Mode viewport override logic from dllmain.cpp
-
+    // PoC: зажать viewport в 100x100 что бы Майнкрафт ни просил
     if (g_realViewport) {
         internalCall = true;
-        g_realViewport(x, y, width, height);
+        g_realViewport(0, 0, 100, 100);
         internalCall = false;
     }
 }
