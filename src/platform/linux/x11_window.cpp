@@ -147,14 +147,7 @@ bool RequestWindowResize(Window win, int width, int height) {
     Display* dpy = X11Display::Get();
     if (!dpy || !win) return false;
 
-    // Попытка 3: XMoveResizeWindow (работает в обход WM)
-    XWindowAttributes attrs;
-    if (XGetWindowAttributes(dpy, win, &attrs)) {
-        XMoveResizeWindow(dpy, win, attrs.x, attrs.y, width, height);
-        X11Display::Flush();
-    }
-
-    // Также шлём синтетический ConfigureNotify — чтобы LWJGL увидел новый размер
+    // Попытка 4: XPutBackEvent — кладём ConfigureNotify прямо в очередь приложения
     XConfigureEvent cfg;
     memset(&cfg, 0, sizeof(cfg));
     cfg.type = ConfigureNotify;
@@ -165,7 +158,8 @@ bool RequestWindowResize(Window win, int width, int height) {
     cfg.border_width = 0;
     cfg.above = None;
     cfg.override_redirect = False;
-    XSendEvent(dpy, win, False, StructureNotifyMask, reinterpret_cast<XEvent*>(&cfg));
+
+    XPutBackEvent(dpy, reinterpret_cast<XEvent*>(&cfg));
     X11Display::Flush();
     return true;
 }
