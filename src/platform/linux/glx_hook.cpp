@@ -803,8 +803,19 @@ void hk_glViewport(GLint x, GLint y, GLsizei width, GLsizei height) {
         return;
     }
 
-    // TODO: Mode viewport override logic from dllmain.cpp
+    // Viewport clamping: если активен режим — зажимаем viewport до его размеров
+    int vpW, vpH;
+    ResizeConfig::GetViewportForActiveMode(vpW, vpH);
+    if (vpW > 0 && vpH > 0) {
+        if (g_realViewport) {
+            internalCall = true;
+            g_realViewport(x, y, vpW, vpH);
+            internalCall = false;
+        }
+        return;
+    }
 
+    // Pass-through (Fullscreen)
     if (g_realViewport) {
         internalCall = true;
         g_realViewport(x, y, width, height);

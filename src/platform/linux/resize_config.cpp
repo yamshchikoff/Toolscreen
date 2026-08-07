@@ -181,14 +181,15 @@ bool Load(int screenW, int screenH) {
                 continue;
             }
 
-            // Кап высоты до screenHeight: значения > screenHeight (как EyeZoom 16384)
-            // это viewport, а не window. Viewport clamping — отдельно через hk_glViewport.
-            if (b.height > screenH) {
-                b.height = screenH;
-            }
+            // Сохраняем исходные размеры для viewport'а (до капа)
+            b.viewportW = b.width;
+            b.viewportH = b.height;
 
-            logToFile("[ResizeConfig] keycode=%u → %dx%d (%s)\n",
-                     b.keycode, b.width, b.height,
+            // Кап высоты окна до screenHeight
+            if (b.height > screenH) b.height = screenH;
+
+            logToFile("[ResizeConfig] keycode=%u → win=%dx%d vp=%dx%d (%s)\n",
+                     b.keycode, b.width, b.height, b.viewportW, b.viewportH,
                      hk["mode"].get<std::string>().c_str());
 
             g_bindings.push_back(b);
@@ -224,5 +225,17 @@ void SetOriginalSize(int w, int h) {
 
 int GetOriginalW() { return g_originalW; }
 int GetOriginalH() { return g_originalH; }
+
+void GetViewportForActiveMode(int& outW, int& outH) {
+    outW = outH = 0;
+    if (g_activeMode.empty()) return;
+    for (auto& b : g_bindings) {
+        if (b.mode == g_activeMode) {
+            outW = b.viewportW;
+            outH = b.viewportH;
+            return;
+        }
+    }
+}
 
 }  // namespace ResizeConfig
