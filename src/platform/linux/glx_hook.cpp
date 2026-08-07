@@ -656,7 +656,11 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     {
         GLXDrawable currentDrawable = glXGetCurrentDrawable();
         if (currentDrawable) {
-            Window win = static_cast<Window>(currentDrawable);
+            Window child = static_cast<Window>(currentDrawable);
+            // Поднимаемся до топлевел-окна (WM_CLIENT_LIST).
+            // glXGetCurrentDrawable() возвращает GLX-дочернее окно,
+            // на котором XConfigureWindow падает с BadWindow.
+            Window win = X11Window::FindTopLevelWindow(X11Display::Get(), child);
             X11Display::SetGameWindow(win);
             if (!g_inputWired && g_imguiCtx) {
                 ImGui::SetCurrentContext(g_imguiCtx);

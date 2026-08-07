@@ -19,6 +19,10 @@ void CloseOwnDisplay();
 // Get the game's X11 window
 Window GetGameWindow();
 
+// Find the top-level WM-managed parent of a window.
+// Walks up XQueryTree until it finds a window with WM_STATE set.
+Window FindTopLevelWindow(Display* dpy, Window win);
+
 // Set the game window (called after detection)
 void SetGameWindow(Window win);
 
