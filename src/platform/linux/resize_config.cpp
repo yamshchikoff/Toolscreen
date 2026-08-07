@@ -1,5 +1,6 @@
 #include "resize_config.h"
 
+#include <cctype>
 #include <cmath>
 #include <cstdarg>
 #include <cstdio>
@@ -22,14 +23,18 @@ std::vector<HotkeyBinding> g_bindings;
 struct Expr {
     const char* s;
     int screenW, screenH;
+    bool error;
 
-    Expr(const char* str, int sw, int sh) : s(str), screenW(sw), screenH(sh) {}
+    Expr(const char* str, int sw, int sh) : s(str), screenW(sw), screenH(sh), error(false) {}
 
     void skipSpaces() { while (*s == ' ') s++; }
 
     bool match(const char* word) {
         size_t n = strlen(word);
-        if (strncmp(s, word, n) == 0) { s += n; return true; }
+        if (strncmp(s, word, n) == 0) {
+            char next = s[n];
+            if (!isalpha(next) && !isdigit(next)) { s += n; return true; }
+        }
         return false;
     }
 
@@ -69,12 +74,13 @@ struct Expr {
         char* end;
         double v = strtod(s, &end);
         if (end > s) { s = end; return v; }
+        error = true;
         return 0.0;
     }
 
     double parseMulDiv() {
         double v = parseAtom();
-        while (true) {
+        while (!error) {
             skipSpaces();
             if (*s == '*') { s++; v *= parseAtom(); }
             else if (*s == '/') { s++; double d = parseAtom(); if (d != 0) v /= d; }
@@ -85,7 +91,7 @@ struct Expr {
 
     double parseExpr() {
         double v = parseMulDiv();
-        while (true) {
+        while (!error) {
             skipSpaces();
             if (*s == '+') { s++; v += parseMulDiv(); }
             else if (*s == '-') { s++; v -= parseMulDiv(); }
@@ -95,9 +101,11 @@ struct Expr {
     }
 };
 
-int evalExpr(const std::string& expr, int screenW, int screenH) {
+int evalExpr(const std::string& expr, int screenW, int screenH, bool& ok) {
     Expr e(expr.c_str(), screenW, screenH);
-    return (int)std::round(e.parseExpr());
+    double v = e.parseExpr();
+    ok = !e.error;
+    return (int)std::round(v);
 }
 
 int evalNumber(double v, int screenW, int screenH) {
@@ -148,19 +156,30 @@ bool Load(int screenW, int screenH) {
         for (auto& hk : json["hotkeys"]) {
             HotkeyBinding b;
             b.keycode = hk["keycode"].get<uint32_t>();
+            bool ok = true;
 
             // width: может быть строкой-формулой или числом
             if (hk["width"].is_string()) {
-                b.width = evalExpr(hk["width"].get<std::string>(), screenW, screenH);
+                b.width = evalExpr(hk["width"].get<std::string>(), screenW, screenH, ok);
             } else {
                 b.width = evalNumber(hk["width"].get<double>(), screenW, screenH);
             }
 
             // height: может быть строкой-формулой или числом
-            if (hk["height"].is_string()) {
-                b.height = evalExpr(hk["height"].get<std::string>(), screenW, screenH);
-            } else {
+            if (ok && hk["height"].is_string()) {
+                b.height = evalExpr(hk["height"].get<std::string>(), screenW, screenH, ok);
+            } else if (ok) {
                 b.height = evalNumber(hk["height"].get<double>(), screenW, screenH);
+            }
+
+            if (!ok) {
+                logToFile("[ResizeConfig] SKIP keycode=%u: parse error in formula\n", b.keycode);
+                continue;
+            }
+
+            // Кап высоты до screenHeight (16384 из EyeZoom — виртуальный вьюпорт, не окно)
+            if (b.height > screenH) {
+                b.height = screenH;
             }
 
             logToFile("[ResizeConfig] keycode=%u → %dx%d (%s)\n",
