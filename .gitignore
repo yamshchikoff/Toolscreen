@@ -38,4 +38,4 @@ src/packages.config
 src/vcpkg.json
 src/pdata.txt
 
-src/include/imgui/
+src/include/imgui/*.swp
