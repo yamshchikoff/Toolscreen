@@ -61,34 +61,40 @@ Window GetGameWindow() {
 }
 
 Window FindTopLevelWindow(Display* dpy, Window win) {
+    // XQueryTree на GLX child падает — GLX-окна не в обычном дереве.
+    // Ищем через _NET_CLIENT_LIST (как внешняя программа resize_gui.c).
     if (!dpy || !win) return 0;
-    Window current = win;
-    for (int i = 0; i < 20; i++) {
-        Atom wmState = XInternAtom(dpy, "WM_STATE", False);
-        Atom type; int fmt; unsigned long nitems, after; unsigned char* prop = NULL;
-        if (XGetWindowProperty(dpy, current, wmState, 0, 1, False,
-                               AnyPropertyType, &type, &fmt, &nitems, &after, &prop) == Success && prop) {
-            XFree(prop);
-            // Лог: нашли топлевел
-            FILE* f = fopen("/home/user/toolscreen.log", "a");
-            if (f) { fprintf(f, "[Toolscreen] FindTopLevelWindow: 0x%lx -> 0x%lx (depth %d)\n", (unsigned long)win, (unsigned long)current, i); fflush(f); fclose(f); }
-            return current;
+
+    FILE* f = fopen("/home/user/toolscreen.log", "a");
+    if (f) { fprintf(f, "[Toolscreen] FindTopLevelWindow: searching parent for 0x%lx via _NET_CLIENT_LIST\n", (unsigned long)win); fflush(f); fclose(f); }
+
+    Atom netClientList = XInternAtom(dpy, "_NET_CLIENT_LIST", False);
+    Atom wmClass       = XInternAtom(dpy, "WM_CLASS", False);
+
+    Atom type; int fmt; unsigned long nitems, after; unsigned char* prop = NULL;
+    Window root = RootWindow(dpy, DefaultScreen(dpy));
+
+    if (XGetWindowProperty(dpy, root, netClientList, 0, ~0L, False,
+                           XA_WINDOW, &type, &fmt, &nitems, &after, &prop) != Success || !prop)
+        return win;
+
+    Window* clients = (Window*)prop;
+    for (unsigned long i = 0; i < nitems; i++) {
+        // Проверяем WM_CLASS на "Minecraft"
+        Atom ct; int cf; unsigned long cn, ca; unsigned char* cp = NULL;
+        if (XGetWindowProperty(dpy, clients[i], wmClass, 0, 256, False,
+                               AnyPropertyType, &ct, &cf, &cn, &ca, &cp) == Success && cp) {
+            if (strstr((char*)cp, "Minecraft")) {
+                XFree(cp);
+                XFree(prop);
+                f = fopen("/home/user/toolscreen.log", "a");
+                if (f) { fprintf(f, "[Toolscreen] FindTopLevelWindow: 0x%lx -> 0x%lx (via _NET_CLIENT_LIST)\n", (unsigned long)win, (unsigned long)clients[i]); fflush(f); fclose(f); }
+                return clients[i];
+            }
+            XFree(cp);
         }
-        Window root, parent, *children = NULL;
-        unsigned int nchildren = 0;
-        if (!XQueryTree(dpy, current, &root, &parent, &children, &nchildren)) {
-            FILE* f = fopen("/home/user/toolscreen.log", "a");
-            if (f) { fprintf(f, "[Toolscreen] FindTopLevelWindow: XQueryTree failed at 0x%lx\n", (unsigned long)current); fflush(f); fclose(f); }
-            return win;
-        }
-        if (children) XFree(children);
-        if (!parent || parent == root) {
-            FILE* f = fopen("/home/user/toolscreen.log", "a");
-            if (f) { fprintf(f, "[Toolscreen] FindTopLevelWindow: reached root at 0x%lx, returning 0x%lx\n", (unsigned long)current, (unsigned long)current); fflush(f); fclose(f); }
-            return current;
-        }
-        current = parent;
     }
+    XFree(prop);
     return win;
 }
 
