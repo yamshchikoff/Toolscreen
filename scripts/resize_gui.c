@@ -25,61 +25,48 @@ typedef struct {
 } App;
 
 // ---- Поиск окна Minecraft ----
-
-static Bool checkWindowName(Display *dpy, Window win, char **nameRet) {
-    Atom type;
-    int fmt;
-    unsigned long nitems, after;
-    unsigned char *prop = NULL;
-    *nameRet = NULL;
-
-    // _NET_WM_NAME (UTF-8)
-    Atom netName = XInternAtom(dpy, "_NET_WM_NAME", False);
-    if (XGetWindowProperty(dpy, win, netName, 0, 256, False,
-                           AnyPropertyType, &type, &fmt, &nitems, &after, &prop) == Success && prop) {
-        if (strstr((char*)prop, "Minecraft")) {
-            *nameRet = strdup((char*)prop);
-            XFree(prop);
-            return True;
-        }
-        XFree(prop);
-    }
-
-    // WM_NAME (legacy)
-    Atom wmName = XInternAtom(dpy, "WM_NAME", False);
-    if (XGetWindowProperty(dpy, win, wmName, 0, 256, False,
-                           AnyPropertyType, &type, &fmt, &nitems, &after, &prop) == Success && prop) {
-        if (strstr((char*)prop, "Minecraft")) {
-            *nameRet = strdup((char*)prop);
-            XFree(prop);
-            return True;
-        }
-        XFree(prop);
-    }
-
-    return False;
-}
+// Используем _NET_CLIENT_LIST — только топлевел-окна, управляемые WM.
+// Рекурсивный обход XQueryTree может найти дочерние GLX-окна,
+// на которых XResizeWindow не работает (BadWindow).
 
 static Window findMinecraftWindow(Display *dpy, Window root, char **nameOut) {
-    // Рекурсивно обходим дерево окон, ищем Minecraft
-    Window parent, *children;
-    unsigned int n;
+    Atom netClientList = XInternAtom(dpy, "_NET_CLIENT_LIST", False);
+    Atom netWmName    = XInternAtom(dpy, "_NET_WM_NAME", False);
+    Atom wmClass       = XInternAtom(dpy, "WM_CLASS", False);
 
-    if (!XQueryTree(dpy, root, &root, &parent, &children, &n))
+    Atom type; int fmt; unsigned long nitems, after; unsigned char *prop = NULL;
+
+    // Получаем список топлевел-окон от WM
+    if (XGetWindowProperty(dpy, root, netClientList, 0, ~0L, False,
+                           XA_WINDOW, &type, &fmt, &nitems, &after, &prop) != Success || !prop)
         return 0;
 
+    Window *clients = (Window*)prop;
     Window found = 0;
-    for (unsigned int i = 0; i < n && !found; i++) {
-        char *name = NULL;
-        if (checkWindowName(dpy, children[i], &name)) {
-            found = children[i];
-            if (nameOut) *nameOut = name;
-            else free(name);
+
+    for (unsigned long i = 0; i < nitems; i++) {
+        Window w = clients[i];
+
+        // Проверяем WM_CLASS на "Minecraft"
+        Atom ct; int cf; unsigned long cn, ca; unsigned char *cp = NULL;
+        if (XGetWindowProperty(dpy, w, wmClass, 0, 256, False,
+                               AnyPropertyType, &ct, &cf, &cn, &ca, &cp) == Success && cp) {
+            if (strstr((char*)cp, "Minecraft")) {
+                found = w;
+                // Читаем имя для статуса
+                Atom nt; int nf; unsigned long nn, na; unsigned char *np = NULL;
+                if (XGetWindowProperty(dpy, w, netWmName, 0, 256, False,
+                                       AnyPropertyType, &nt, &nf, &nn, &na, &np) == Success && np) {
+                    if (nameOut) *nameOut = strdup((char*)np);
+                    XFree(np);
+                }
+                XFree(cp);
+                break;
+            }
+            XFree(cp);
         }
-        if (!found)
-            found = findMinecraftWindow(dpy, children[i], nameOut);
     }
-    XFree(children);
+    XFree(prop);
     return found;
 }
 
