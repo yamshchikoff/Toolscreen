@@ -69,8 +69,6 @@ else()
     # Find Linux dependencies
     find_package(OpenGL REQUIRED)
     find_package(X11 REQUIRED)
-    get_filename_component(TOOLSCREEN_X11_LIB_DIR "${X11_X11_LIB}" DIRECTORY)
-    link_directories("${TOOLSCREEN_X11_LIB_DIR}")
 
     # Set up Linux source files
     set(TOOLSCREEN_PLATFORM_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/platform/linux")
@@ -80,7 +78,6 @@ else()
         ${TOOLSCREEN_PLATFORM_DIR}/glx_hook.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/hotkey_detect.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/x11_event_filter.cpp
-        ${TOOLSCREEN_PLATFORM_DIR}/resize_thread.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/x86_length_disasm.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/x11_input.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/x11_capture.cpp
@@ -1645,41 +1642,6 @@ if(UNIX AND NOT APPLE)
         add_test(
             NAME toolscreen_x11_event_filter_${test_case}
             COMMAND $<TARGET_FILE:toolscreen_x11_event_filter_tests> --run ${test_case}
-        )
-    endforeach()
-
-    add_executable(toolscreen_resize_thread_tests
-        tests/resize_thread_tests.cpp
-        ${TOOLSCREEN_PLATFORM_DIR}/resize_thread.cpp
-    )
-
-    target_include_directories(toolscreen_resize_thread_tests PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
-        ${X11_X11_INCLUDE_PATH}
-    )
-
-    target_compile_definitions(toolscreen_resize_thread_tests PRIVATE
-        NOMINMAX
-    )
-
-    target_link_libraries(toolscreen_resize_thread_tests PRIVATE
-        ${X11_X11_LIB}
-        pthread
-    )
-
-    toolscreen_configure_target_outputs(toolscreen_resize_thread_tests)
-    toolscreen_enable_release_symbols(toolscreen_resize_thread_tests)
-
-    set(TOOLSCREEN_RESIZE_THREAD_TEST_CASES
-        enqueue_increments_processed_count
-        multiple_enqueues_processed
-        stop_and_restart
-    )
-
-    foreach(test_case IN LISTS TOOLSCREEN_RESIZE_THREAD_TEST_CASES)
-        add_test(
-            NAME toolscreen_resize_thread_${test_case}
-            COMMAND $<TARGET_FILE:toolscreen_resize_thread_tests> --run ${test_case}
         )
     endforeach()
 

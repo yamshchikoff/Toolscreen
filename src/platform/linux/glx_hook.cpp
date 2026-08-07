@@ -13,7 +13,6 @@
 #include "platform/linux/hotkey_detect.h"
 #include "platform/linux/x11_event_filter.h"
 #include "platform/linux/x11_window.h"
-#include "platform/linux/resize_thread.h"
 #include "platform/linux/x86_length_disasm.h"
 #include "gui/imgui_impl_x11.h"
 #include "imgui.h"
@@ -353,7 +352,7 @@ static XEvent* volatile g_debugEvent = nullptr;
 
 [[gnu::noinline]]
 static void DoTestResize(Window win) {
-    ResizeThread::Enqueue(win, 800, 600);
+    X11Window::RequestWindowResize(win, 800, 600);
 }
 
 int DetourXNextEvent(Display* display, XEvent* event_return) {

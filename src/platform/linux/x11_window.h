@@ -12,10 +12,6 @@ namespace X11Window {
 
 // ---- Window management ----
 
-// Второе Display-соединение для ресайза в обход GLFW
-void InitOwnDisplay();
-void CloseOwnDisplay();
-
 // Get the game's X11 window
 Window GetGameWindow();
 
