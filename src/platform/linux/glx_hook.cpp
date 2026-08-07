@@ -350,6 +350,11 @@ static int (*g_realXNextEvent)(Display*, XEvent*) = nullptr;
 // Для отладки: сохраняем event_return до вызова, чтобы прочитать после.
 static XEvent* volatile g_debugEvent = nullptr;
 
+[[gnu::noinline]]
+static void DoTestResize(Window win) {
+    X11Window::RequestWindowResize(win, 800, 600);
+}
+
 int DetourXNextEvent(Display* display, XEvent* event_return) {
     if (!g_realXNextEvent) return -1;
     g_debugEvent = event_return;
@@ -361,11 +366,12 @@ int DetourXNextEvent(Display* display, XEvent* event_return) {
                      g_debugEvent->type, g_debugEvent->xkey.keycode);
         }
         // Минимальный тест: Z (keycode 52) → ресайз 800x600
+        // __attribute__((noinline)) чтобы компилятор не выкинул
         if (g_debugEvent->type == KeyPress && g_debugEvent->xkey.keycode == 52) {
             HOOK_LOG("[Toolscreen] Z: resize to 800x600\n");
             Window win = X11Display::GetGameWindow();
             if (win) {
-                X11Window::RequestWindowResize(win, 800, 600);
+                DoTestResize(win);
             }
         }
     }
