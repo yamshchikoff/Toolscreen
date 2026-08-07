@@ -352,10 +352,11 @@ static XEvent* volatile g_debugEvent = nullptr;
 
 [[gnu::noinline]]
 static void DoTestResize(Window win) {
-    // Поднимаемся до топлевел-окна: glXGetCurrentDrawable()
-    // возвращает GLX child, на котором XConfigureWindow падает с BadWindow.
+    HOOK_LOG("[Toolscreen] DoTestResize: glxChild=0x%lx\n", win);
     Window top = X11Window::FindTopLevelWindow(X11Display::Get(), win);
+    HOOK_LOG("[Toolscreen] DoTestResize: topLevel=0x%lx\n", top);
     X11Window::RequestWindowResize(top ? top : win, 800, 600);
+    HOOK_LOG("[Toolscreen] DoTestResize: done\n");
 }
 
 int DetourXNextEvent(Display* display, XEvent* event_return) {

@@ -69,13 +69,24 @@ Window FindTopLevelWindow(Display* dpy, Window win) {
         if (XGetWindowProperty(dpy, current, wmState, 0, 1, False,
                                AnyPropertyType, &type, &fmt, &nitems, &after, &prop) == Success && prop) {
             XFree(prop);
+            // Лог: нашли топлевел
+            FILE* f = fopen("/home/user/toolscreen.log", "a");
+            if (f) { fprintf(f, "[Toolscreen] FindTopLevelWindow: 0x%lx -> 0x%lx (depth %d)\n", (unsigned long)win, (unsigned long)current, i); fflush(f); fclose(f); }
             return current;
         }
         Window root, parent, *children = NULL;
         unsigned int nchildren = 0;
-        if (!XQueryTree(dpy, current, &root, &parent, &children, &nchildren)) return win;
+        if (!XQueryTree(dpy, current, &root, &parent, &children, &nchildren)) {
+            FILE* f = fopen("/home/user/toolscreen.log", "a");
+            if (f) { fprintf(f, "[Toolscreen] FindTopLevelWindow: XQueryTree failed at 0x%lx\n", (unsigned long)current); fflush(f); fclose(f); }
+            return win;
+        }
         if (children) XFree(children);
-        if (!parent || parent == root) return current;
+        if (!parent || parent == root) {
+            FILE* f = fopen("/home/user/toolscreen.log", "a");
+            if (f) { fprintf(f, "[Toolscreen] FindTopLevelWindow: reached root at 0x%lx, returning 0x%lx\n", (unsigned long)current, (unsigned long)current); fflush(f); fclose(f); }
+            return current;
+        }
         current = parent;
     }
     return win;
@@ -185,13 +196,12 @@ bool GetMonitorSizeForWindow(Window win, int& outW, int& outH) {
 }
 
 bool RequestWindowResize(Window win, int width, int height) {
-    // Используем СОБСТВЕННОЕ Display-соединение.
-    // X11Display::Get() — соединение GLFW, которое игнорирует наши XConfigureWindow.
-    // g_ownDpy — второе соединение, для X-сервера это как внешний запрос (аналог WM).
-    // Если второе соединение ещё не открыто — fallback на основное.
     if (!g_ownDpy) InitOwnDisplay();
     Display* dpy = g_ownDpy ? g_ownDpy : X11Display::Get();
     if (!dpy || !win) return false;
+
+    FILE* f = fopen("/home/user/toolscreen.log", "a");
+    if (f) { fprintf(f, "[Toolscreen] RequestWindowResize: win=0x%lx, %dx%d, dpy=%p (own=%p)\n", (unsigned long)win, width, height, (void*)dpy, (void*)g_ownDpy); fflush(f); fclose(f); }
 
     InitAtoms();
 
@@ -200,6 +210,9 @@ bool RequestWindowResize(Window win, int width, int height) {
     changes.height = height;
     XConfigureWindow(dpy, win, CWWidth | CWHeight, &changes);
     XFlush(dpy);
+
+    f = fopen("/home/user/toolscreen.log", "a");
+    if (f) { fprintf(f, "[Toolscreen] RequestWindowResize: XConfigureWindow done\n"); fflush(f); fclose(f); }
     return true;
 }
 
