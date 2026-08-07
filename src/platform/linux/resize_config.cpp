@@ -181,11 +181,6 @@ bool Load(int screenW, int screenH) {
                 continue;
             }
 
-            // Кап высоты до screenHeight (16384 из EyeZoom — виртуальный вьюпорт, не окно)
-            if (b.height > screenH) {
-                b.height = screenH;
-            }
-
             logToFile("[ResizeConfig] keycode=%u → %dx%d (%s)\n",
                      b.keycode, b.width, b.height,
                      hk["mode"].get<std::string>().c_str());
