@@ -364,14 +364,21 @@ int DetourXNextEvent(Display* display, XEvent* event_return) {
     if (!g_realXNextEvent) return -1;
     g_debugEvent = event_return;
     volatile int result = g_realXNextEvent(display, event_return);
+    // Фильтр повторов для хоткеев: модификаторы (LAlt) генерируют
+    // повторные KeyPress до KeyRelease. Игнорируем пока клавиша не отпущена.
+    static uint32_t s_lastHotkeyDown = 0;
     if (g_debugEvent) {
         if (g_debugEvent->type == KeyPress || g_debugEvent->type == KeyRelease) {
             HOOK_LOG("[Toolscreen] KEY: type=%d keycode=%u\n",
                      g_debugEvent->type, g_debugEvent->xkey.keycode);
         }
         if (g_debugEvent->type == KeyPress) {
+            if (g_debugEvent->xkey.keycode == s_lastHotkeyDown) {
+                return result;  // повтор — игнорируем
+            }
             auto* bind = ResizeConfig::Find(g_debugEvent->xkey.keycode);
             if (bind) {
+                s_lastHotkeyDown = g_debugEvent->xkey.keycode;
                 Window win = X11Display::GetGameWindow();
                 if (win) {
                     // Сохраняем исходный размер при первом ресайзе
@@ -395,6 +402,11 @@ int DetourXNextEvent(Display* display, XEvent* event_return) {
                         ResizeConfig::SetActiveMode(bind->mode.c_str());
                     }
                 }
+            }
+        }
+        if (g_debugEvent->type == KeyRelease) {
+            if (g_debugEvent->xkey.keycode == s_lastHotkeyDown) {
+                s_lastHotkeyDown = 0;
             }
         }
     }
