@@ -786,6 +786,9 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
         }
     }
 
+    // PoC: зажать viewport в 100x100 — проверить механизм
+    glViewport(0, 0, 100, 100);
+
     // Call the real SwapBuffers via saved dispatch table pointer.
     inHkSwap = false;
     auto* realImpl = g_realSwapBuffers.load(std::memory_order_acquire);
