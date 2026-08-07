@@ -16,7 +16,11 @@
 ~~В `DetourXNextEvent`, при нажатии LAlt, дёрнуть `X11Window::RequestWindowResize(win, 800, 600)` напрямую.~~ **НЕ СРАБОТАЛО**: Z ловится, `RequestWindowResize` вызывается, но `XResizeWindow` игнорируется WM — окно не меняет размер.
 
 **Следующая попытка**: `XSendEvent(ConfigureRequest)` — **НЕ СРАБОТАЛО**.
-**Затем**: `XMoveResizeWindow` + синтетический `ConfigureNotify` — **НЕ СРАБОТАЛО**. GDB показал: код ресайза выкинут компилятором из бинарника (только fopen/vfprintf/fclose от HOOK_LOG, затем эпилог). Call к `RequestWindowResize` отсутствует.
+**Затем**: `XMoveResizeWindow` + синтетический `ConfigureNotify` — **НЕ СРАБОТАЛО**. GDB показал: код ресайза выкинут компилятором из бинарника (только fopen/vfprintf/fclose от HOOK_LOG, затем эпилог). Call к `RequestWindowResize` отсутствует. **Исправлено** `noinline DoTestResize`.
+
+**Попытка**: `XPutBackEvent(ConfigureNotify)` — **НЕ СРАБОТАЛО**. GDB dprintf подтвердил: `RequestWindowResize` вызывается (hit count 2), XPutBackEvent исполняется. Но GLFW/LWJGL не реагирует на синтетический ConfigureNotify — фреймбуфер не пересоздаётся.
+
+**Вывод**: X11-функции ресайза окна (XResizeWindow, XSendEvent, XMoveResizeWindow, XPutBackEvent) не работают на окне Minecraft/LWJGL. Следующий подход: viewport clamping через `hk_glViewport`.
 
 **Исправлено**: `[[gnu::noinline]] static void DoTestResize()` — компилятор больше не выкидывает. Подтверждено через `objdump` (call на offset 0x188).
 
