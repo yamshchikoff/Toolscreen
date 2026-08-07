@@ -60,6 +60,27 @@ Window GetGameWindow() {
     return g_gameWindow;
 }
 
+Window FindTopLevelWindow(Display* dpy, Window win) {
+    if (!dpy || !win) return 0;
+    Window current = win;
+    for (int i = 0; i < 20; i++) {
+        Atom wmState = XInternAtom(dpy, "WM_STATE", False);
+        Atom type; int fmt; unsigned long nitems, after; unsigned char* prop = NULL;
+        if (XGetWindowProperty(dpy, current, wmState, 0, 1, False,
+                               AnyPropertyType, &type, &fmt, &nitems, &after, &prop) == Success && prop) {
+            XFree(prop);
+            return current;
+        }
+        Window root, parent, *children = NULL;
+        unsigned int nchildren = 0;
+        if (!XQueryTree(dpy, current, &root, &parent, &children, &nchildren)) return win;
+        if (children) XFree(children);
+        if (!parent || parent == root) return current;
+        current = parent;
+    }
+    return win;
+}
+
 void SetGameWindow(Window win) {
     std::lock_guard<std::mutex> lock(g_windowMutex);
     g_gameWindow = win;

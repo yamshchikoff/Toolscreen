@@ -19,6 +19,11 @@ void CloseOwnDisplay();
 // Get the game's X11 window
 Window GetGameWindow();
 
+// Подняться от дочернего окна до топлевела с WM_STATE.
+// glXGetCurrentDrawable() возвращает GLX child, на котором
+// XConfigureWindow падает с BadWindow.
+Window FindTopLevelWindow(Display* dpy, Window win);
+
 // Set the game window (called after detection)
 void SetGameWindow(Window win);
 
