@@ -48,9 +48,9 @@ bool RequestWindowClientResize(HWND hwnd, int width, int height, const char* sou
 
 Если deadlock — вынести вызов `SwitchToMode` из `DetourXNextEvent` в `hk_glXSwapBuffers` (рендер-поток), через очередь событий.
 
-### Шаг 4: добавить остальные хоткеи (Z→Thin, J→EyeZoom)
+### Шаг 4: Z→Thin, J→EyeZoom — отдельными документами
 
-После того как Wide заработает — добавить Z и J по тому же принципу.
+Реализуются только после полного принятия Wide. Каждый — в отдельном документе и отдельным планом. В скоуп данного документа не входят.
 
 ### Шаг 5: viewport clamping (hk_glViewport)
 
