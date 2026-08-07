@@ -6,8 +6,11 @@ namespace ResizeConfig {
 
 struct HotkeyBinding {
     uint32_t keycode;
-    int width;
-    int height;
+    int width;        // целевая ширина режима
+    int height;       // целевая высота режима
+    int originalW;    // исходная ширина (Fullscreen)
+    int originalH;    // исходная высота (Fullscreen)
+    bool active;      // сейчас в secondaryMode? (toggle)
 };
 
 // Загрузить ~/.toolscreen/resize_bindings.json.
@@ -15,6 +18,6 @@ struct HotkeyBinding {
 bool Load(int screenW, int screenH);
 
 // Найти бинд по X11 keycode. Возвращает nullptr если не найден.
-const HotkeyBinding* Find(uint32_t keycode);
+HotkeyBinding* Find(uint32_t keycode);
 
 }  // namespace ResizeConfig

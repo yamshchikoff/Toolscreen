@@ -372,11 +372,19 @@ int DetourXNextEvent(Display* display, XEvent* event_return) {
         if (g_debugEvent->type == KeyPress) {
             auto* bind = ResizeConfig::Find(g_debugEvent->xkey.keycode);
             if (bind) {
-                HOOK_LOG("[Toolscreen] Hotkey: keycode=%u → %dx%d\n",
-                         bind->keycode, bind->width, bind->height);
                 Window win = X11Display::GetGameWindow();
                 if (win) {
-                    DoTestResize(win, bind->width, bind->height);
+                    if (bind->active) {
+                        HOOK_LOG("[Toolscreen] Hotkey: keycode=%u → restore %dx%d\n",
+                                 bind->keycode, bind->originalW, bind->originalH);
+                        DoTestResize(win, bind->originalW, bind->originalH);
+                        bind->active = false;
+                    } else {
+                        HOOK_LOG("[Toolscreen] Hotkey: keycode=%u → %dx%d\n",
+                                 bind->keycode, bind->width, bind->height);
+                        DoTestResize(win, bind->width, bind->height);
+                        bind->active = true;
+                    }
                 }
             }
         }

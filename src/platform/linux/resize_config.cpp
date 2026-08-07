@@ -156,6 +156,9 @@ bool Load(int screenW, int screenH) {
         for (auto& hk : json["hotkeys"]) {
             HotkeyBinding b;
             b.keycode = hk["keycode"].get<uint32_t>();
+            b.originalW = screenW;
+            b.originalH = screenH;
+            b.active = false;
             bool ok = true;
 
             // width: может быть строкой-формулой или числом
@@ -197,7 +200,7 @@ bool Load(int screenW, int screenH) {
     return true;
 }
 
-const HotkeyBinding* Find(uint32_t keycode) {
+HotkeyBinding* Find(uint32_t keycode) {
     for (auto& b : g_bindings) {
         if (b.keycode == keycode) return &b;
     }
