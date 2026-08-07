@@ -13,11 +13,13 @@
 
 ### Шаг 1: минимальный тест ресайза
 
-В `DetourXNextEvent`, при нажатии LAlt, дёрнуть `X11Window::RequestWindowResize(win, 800, 600)` напрямую. Проверить что окно Minecraft физически меняет размер.
+~~В `DetourXNextEvent`, при нажатии LAlt, дёрнуть `X11Window::RequestWindowResize(win, 800, 600)` напрямую.~~ **НЕ СРАБОТАЛО**: Z ловится, `RequestWindowResize` вызывается, но `XResizeWindow` игнорируется WM — окно не меняет размер.
+
+**Следующая попытка**: `XSendEvent` с `ConfigureRequest` (имитация запроса от WM) или `XMoveResizeWindow` + `XSetWMNormalHints`. Если не поможет — `XConfigureWindow` с `CWWidth`/`CWHeight`.
 
 **Файл**: `glx_hook.cpp` — DetourXNextEvent
 
-**Риск**: `XResizeWindow` изнутри `XLockDisplay` может вызвать deadlock. Но X11-спек говорит что `XResizeWindow` не блокирует дисплей — должно быть безопасно.
+**Риск**: `XResizeWindow` изнутри `XLockDisplay` может вызвать deadlock. **Проверено**: deadlock'а нет, игра не виснет.
 
 ### Шаг 2: починить RequestWindowClientResize на Linux
 
