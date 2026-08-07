@@ -806,23 +806,13 @@ void hk_glViewport(GLint x, GLint y, GLsizei width, GLsizei height) {
     // Viewport clamping: если активен режим — зажимаем viewport до его размеров
     int vpW, vpH;
     ResizeConfig::GetViewportForActiveMode(vpW, vpH);
-    static int s_lastVpW = 0, s_lastVpH = 0;
     if (vpW > 0 && vpH > 0) {
-        if (vpW != s_lastVpW || vpH != s_lastVpH) {
-            HOOK_LOG("[Toolscreen] Viewport: clamp to %dx%d (was %dx%d)\n", vpW, vpH, width, height);
-            s_lastVpW = vpW; s_lastVpH = vpH;
-        }
         if (g_realViewport) {
             internalCall = true;
             g_realViewport(x, y, vpW, vpH);
             internalCall = false;
         }
         return;
-    }
-    // Сброс при возврате к Fullscreen
-    if (s_lastVpW != 0) {
-        HOOK_LOG("[Toolscreen] Viewport: pass-through restored\n");
-        s_lastVpW = s_lastVpH = 0;
     }
 
     // Pass-through (Fullscreen)
