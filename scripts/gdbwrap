@@ -63,6 +63,21 @@ def start(args):
                 cmd_text = f.read().strip()
             if cmd_text:
                 os.remove(CMD)
+                if cmd_text == "__INTERRUPT__":
+                    # Посылаем Ctrl+C через PTY
+                    child.sendintr()
+                    try:
+                        child.expect_exact("(gdb)", timeout=10)
+                    except pexpect.TIMEOUT:
+                        output = "[TIMEOUT] " + (child.before or "")
+                    except pexpect.EOF:
+                        output = "[EOF] " + (child.before or "")
+                    else:
+                        output = child.before if child.before else "Interrupted"
+                    with open(OUT, 'w') as f:
+                        f.write(output)
+                    continue
+
                 # Синхронизация: ждём (gdb) если ещё не на нём
                 try:
                     child.expect_exact("(gdb)", timeout=0.5)
@@ -118,6 +133,21 @@ def cmd(command, timeout=30):
     with open(OUT) as f:
         return f.read()
 
+def interrupt(timeout=10):
+    """Послать SIGINT через PTY — безопасное прерывание без убийства gdb."""
+    for f in [OUT, CMD]:
+        if os.path.exists(f): os.remove(f)
+    with open(CMD, 'w') as f:
+        f.write("__INTERRUPT__\n")
+    deadline = time.time() + timeout
+    while not os.path.exists(OUT):
+        time.sleep(0.1)
+        if time.time() > deadline:
+            return "TIMEOUT"
+    time.sleep(0.1)
+    with open(OUT) as f:
+        return f.read()
+
 def stop():
     open(STOP, 'w').close()
     time.sleep(0.5)
@@ -134,5 +164,6 @@ if __name__ == '__main__':
     action = sys.argv[1]
     if action == 'start': start(sys.argv[2:])
     elif action == 'cmd': print(cmd(' '.join(sys.argv[2:])), end='')
+    elif action == 'interrupt': print(interrupt())
     elif action == 'stop': stop()
     else: print(f"Unknown: {action}")
