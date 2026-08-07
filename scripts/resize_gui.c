@@ -1,7 +1,10 @@
 // resize_gui: GUI-кнопка для ресайза окна Minecraft
+// Находит окно Minecraft автоматически — аргументы не нужны.
 // Сборка: gcc -o /tmp/resize_gui scripts/resize_gui.c -lX11
-// Запуск: /tmp/resize_gui <window_id>
+// Запуск: /tmp/resize_gui
 #include <X11/Xlib.h>
+#include <X11/Xatom.h>
+#include <X11/Xutil.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,122 +12,225 @@
 
 typedef struct {
     Display *dpy;
-    Window mcWin;       // окно Minecraft
-    Window guiWin;      // наше окно
-    Window btnResize;   // кнопка "Resize 800x600"
-    Window btnRestore;  // кнопка "Restore 925x530"
+    Window mcWin;
+    Window guiWin;
+    Window btnResize;
+    Window btnRestore;
     GC gc;
     int btnResizeX, btnResizeY, btnResizeW, btnResizeH;
     int btnRestoreX, btnRestoreY, btnRestoreW, btnRestoreH;
     int guiW, guiH;
-    int mcOrigW, mcOrigH;  // исходный размер Minecraft
-    int clickCount;
+    int mcOrigW, mcOrigH;
+    char statusText[256];
 } App;
 
-static void drawButton(App *a, Window btn, int x, int y, int w, int h, const char *label, int pressed) {
-    unsigned long bg = pressed ? 0x888888 : 0xCCCCCC;
-    unsigned long fg = 0x000000;
-    XSetForeground(a->dpy, a->gc, bg);
-    XFillRectangle(a->dpy, btn, a->gc, 0, 0, w, h);
-    XSetForeground(a->dpy, a->gc, 0x555555);
+// ---- Поиск окна Minecraft ----
+
+static Bool checkWindowName(Display *dpy, Window win, char **nameRet) {
+    Atom type;
+    int fmt;
+    unsigned long nitems, after;
+    unsigned char *prop = NULL;
+    *nameRet = NULL;
+
+    // _NET_WM_NAME (UTF-8)
+    Atom netName = XInternAtom(dpy, "_NET_WM_NAME", False);
+    if (XGetWindowProperty(dpy, win, netName, 0, 256, False,
+                           AnyPropertyType, &type, &fmt, &nitems, &after, &prop) == Success && prop) {
+        if (strstr((char*)prop, "Minecraft")) {
+            *nameRet = strdup((char*)prop);
+            XFree(prop);
+            return True;
+        }
+        XFree(prop);
+    }
+
+    // WM_NAME (legacy)
+    Atom wmName = XInternAtom(dpy, "WM_NAME", False);
+    if (XGetWindowProperty(dpy, win, wmName, 0, 256, False,
+                           AnyPropertyType, &type, &fmt, &nitems, &after, &prop) == Success && prop) {
+        if (strstr((char*)prop, "Minecraft")) {
+            *nameRet = strdup((char*)prop);
+            XFree(prop);
+            return True;
+        }
+        XFree(prop);
+    }
+
+    return False;
+}
+
+static Window findMinecraftWindow(Display *dpy, Window root, char **nameOut) {
+    // Рекурсивно обходим дерево окон, ищем Minecraft
+    Window parent, *children;
+    unsigned int n;
+
+    if (!XQueryTree(dpy, root, &root, &parent, &children, &n))
+        return 0;
+
+    Window found = 0;
+    for (unsigned int i = 0; i < n && !found; i++) {
+        char *name = NULL;
+        if (checkWindowName(dpy, children[i], &name)) {
+            found = children[i];
+            if (nameOut) *nameOut = name;
+            else free(name);
+        }
+        if (!found)
+            found = findMinecraftWindow(dpy, children[i], nameOut);
+    }
+    XFree(children);
+    return found;
+}
+
+// ---- Отрисовка ----
+
+static unsigned long rgb(Display *dpy, int r, int g, int b) {
+    Colormap cmap = DefaultColormap(dpy, DefaultScreen(dpy));
+    XColor c;
+    c.red = r * 257;
+    c.green = g * 257;
+    c.blue = b * 257;
+    c.flags = DoRed | DoGreen | DoBlue;
+    XAllocColor(dpy, cmap, &c);
+    return c.pixel;
+}
+
+static void drawButton(App *a, Window btn, int w, int h, const char *label, int pressed) {
+    Colormap cmap = DefaultColormap(a->dpy, DefaultScreen(a->dpy));
+    unsigned long bg = pressed ? rgb(a->dpy, 0x66, 0x66, 0x66) : rgb(a->dpy, 0xCC, 0xCC, 0xCC);
+    unsigned long fg = rgb(a->dpy, 0x00, 0x00, 0x00);
+    unsigned long border = rgb(a->dpy, 0x55, 0x55, 0x55);
+
+    XSetWindowBackground(a->dpy, btn, bg);
+    XClearWindow(a->dpy, btn);
+
+    XSetForeground(a->dpy, a->gc, border);
     XDrawRectangle(a->dpy, btn, a->gc, 0, 0, w - 1, h - 1);
+
     XSetForeground(a->dpy, a->gc, fg);
-    int tw = XTextWidth(XQueryFont(a->dpy, XGContextFromGC(a->gc)), label, strlen(label));
-    int th = 14;
+    XFontStruct *font = XQueryFont(a->dpy, XGContextFromGC(a->gc));
+    int tw = XTextWidth(font, label, strlen(label));
+    int th = font->ascent;
     XDrawString(a->dpy, btn, a->gc, (w - tw) / 2, (h + th) / 2, label, strlen(label));
 }
+
+static void drawStatus(App *a) {
+    XSetWindowBackground(a->dpy, a->guiWin, rgb(a->dpy, 0xEE, 0xEE, 0xEE));
+    XClearWindow(a->dpy, a->guiWin);
+    XSetForeground(a->dpy, a->gc, rgb(a->dpy, 0x33, 0x33, 0x33));
+    XFontStruct *font = XQueryFont(a->dpy, XGContextFromGC(a->gc));
+    XDrawString(a->dpy, a->guiWin, a->gc, 15, 20 + font->ascent,
+                a->statusText, strlen(a->statusText));
+}
+
+// ---- Ресайз ----
 
 static void resizeMC(App *a, int w, int h) {
     printf("[resize_gui] XResizeWindow(0x%lx, %d, %d)\n", a->mcWin, w, h);
     XResizeWindow(a->dpy, a->mcWin, w, h);
     XFlush(a->dpy);
 
-    // Проверим что получилось
     usleep(100000);
     XWindowAttributes attrs;
     if (XGetWindowAttributes(a->dpy, a->mcWin, &attrs)) {
         printf("[resize_gui] now: %dx%d\n", attrs.width, attrs.height);
-    } else {
-        printf("[resize_gui] XGetWindowAttributes failed!\n");
+        snprintf(a->statusText, sizeof(a->statusText),
+                 "Minecraft 0x%lx — resized to %dx%d  (was %dx%d)",
+                 a->mcWin, attrs.width, attrs.height, a->mcOrigW, a->mcOrigH);
     }
 }
 
-int main(int argc, char **argv) {
-    if (argc < 2) {
-        fprintf(stderr, "Usage: %s <minecraft_window_id>\n", argv[0]);
-        return 1;
-    }
+// ---- Main ----
 
+int main(void) {
     App a;
     memset(&a, 0, sizeof(a));
-    a.mcWin = (Window)strtoul(argv[1], NULL, 16);
-    a.clickCount = 0;
 
     a.dpy = XOpenDisplay(":1");
-    if (!a.dpy) { perror("XOpenDisplay"); return 1; }
-
-    // Узнать исходный размер Minecraft
-    XWindowAttributes attrs;
-    if (XGetWindowAttributes(a.dpy, a.mcWin, &attrs)) {
-        a.mcOrigW = attrs.width;
-        a.mcOrigH = attrs.height;
-        printf("[resize_gui] Minecraft window 0x%lx, current size %dx%d\n",
-               a.mcWin, a.mcOrigW, a.mcOrigH);
-    } else {
-        fprintf(stderr, "[resize_gui] ERROR: cannot get Minecraft window attributes!\n");
-        a.mcOrigW = 925;
-        a.mcOrigH = 530;
+    if (!a.dpy) {
+        a.dpy = XOpenDisplay(":0");
+        if (!a.dpy) {
+            fprintf(stderr, "Cannot open X display :0 or :1\n");
+            return 1;
+        }
     }
 
     int screen = DefaultScreen(a.dpy);
     Window root = RootWindow(a.dpy, screen);
 
-    a.guiW = 280;
-    a.guiH = 120;
+    // Ищем окно Minecraft
+    char *mcName = NULL;
+    a.mcWin = findMinecraftWindow(a.dpy, root, &mcName);
+
+    if (!a.mcWin) {
+        fprintf(stderr, "Minecraft window not found. Is Minecraft running?\n");
+        XCloseDisplay(a.dpy);
+        return 1;
+    }
+
+    printf("[resize_gui] Found Minecraft: 0x%lx \"%s\"\n", a.mcWin, mcName ? mcName : "");
+
+    // Исходный размер
+    XWindowAttributes attrs;
+    if (XGetWindowAttributes(a.dpy, a.mcWin, &attrs)) {
+        a.mcOrigW = attrs.width;
+        a.mcOrigH = attrs.height;
+    } else {
+        a.mcOrigW = 925;
+        a.mcOrigH = 530;
+    }
+
+    snprintf(a.statusText, sizeof(a.statusText),
+             "Minecraft 0x%lx \"%s\" — %dx%d",
+             a.mcWin, mcName ? mcName : "?", a.mcOrigW, a.mcOrigH);
+    free(mcName);
+
+    a.guiW = 330;
+    a.guiH = 160;
 
     a.guiWin = XCreateSimpleWindow(a.dpy, root, 100, 100, a.guiW, a.guiH,
                                     1, BlackPixel(a.dpy, screen), 0xEEEEEE);
 
-    // Кнопка Resize
-    a.btnResizeX = 20;
-    a.btnResizeY = 25;
-    a.btnResizeW = 240;
-    a.btnResizeH = 30;
+    // Кнопка Resize 800x600
+    a.btnResizeX = 20;  a.btnResizeY = 35;
+    a.btnResizeW = 290; a.btnResizeH = 32;
     a.btnResize = XCreateSimpleWindow(a.dpy, a.guiWin,
                                        a.btnResizeX, a.btnResizeY,
                                        a.btnResizeW, a.btnResizeH,
                                        1, BlackPixel(a.dpy, screen), 0xCCCCCC);
 
     // Кнопка Restore
-    a.btnRestoreX = 20;
-    a.btnRestoreY = 65;
-    a.btnRestoreW = 240;
-    a.btnRestoreH = 30;
+    a.btnRestoreX = 20;  a.btnRestoreY = 78;
+    a.btnRestoreW = 290; a.btnRestoreH = 32;
     a.btnRestore = XCreateSimpleWindow(a.dpy, a.guiWin,
                                         a.btnRestoreX, a.btnRestoreY,
                                         a.btnRestoreW, a.btnRestoreH,
                                         1, BlackPixel(a.dpy, screen), 0xCCCCCC);
 
-    XSelectInput(a.dpy, a.guiWin, ExposureMask | KeyPressMask);
-    XSelectInput(a.dpy, a.btnResize,
-                 ExposureMask | ButtonPressMask | ButtonReleaseMask |
-                 EnterWindowMask | LeaveWindowMask);
-    XSelectInput(a.dpy, a.btnRestore,
-                 ExposureMask | ButtonPressMask | ButtonReleaseMask |
-                 EnterWindowMask | LeaveWindowMask);
+    // Кнопка рефреш (пересканировать окна)
+    Window btnRefresh;
+    int btnRefreshX = 20, btnRefreshY = 121, btnRefreshW = 290, btnRefreshH = 28;
+    btnRefresh = XCreateSimpleWindow(a.dpy, a.guiWin,
+                                      btnRefreshX, btnRefreshY,
+                                      btnRefreshW, btnRefreshH,
+                                      1, BlackPixel(a.dpy, screen), 0xCCCCCC);
 
-    XStoreName(a.dpy, a.guiWin, "Minecraft Resizer");
+    XSelectInput(a.dpy, a.guiWin, ExposureMask | KeyPressMask);
+    XSelectInput(a.dpy, a.btnResize, ExposureMask | ButtonPressMask | ButtonReleaseMask);
+    XSelectInput(a.dpy, a.btnRestore, ExposureMask | ButtonPressMask | ButtonReleaseMask);
+    XSelectInput(a.dpy, btnRefresh, ExposureMask | ButtonPressMask | ButtonReleaseMask);
+
+    XStoreName(a.dpy, a.guiWin, "MC Resizer");
     XMapWindow(a.dpy, a.guiWin);
     XMapWindow(a.dpy, a.btnResize);
     XMapWindow(a.dpy, a.btnRestore);
+    XMapWindow(a.dpy, btnRefresh);
 
     a.gc = XCreateGC(a.dpy, a.guiWin, 0, NULL);
+    drawStatus(&a);
 
-    printf("[resize_gui] GUI ready. Press buttons to resize Minecraft.\n");
-    printf("[resize_gui] q = quit\n");
-
-    int resizeBtnPressed = 0;
-    int restoreBtnPressed = 0;
+    int resizePressed = 0, restorePressed = 0, refreshPressed = 0;
 
     while (1) {
         XEvent ev;
@@ -132,56 +238,76 @@ int main(int argc, char **argv) {
 
         if (ev.type == KeyPress) {
             char buf[2];
-            if (XLookupString(&ev.xkey, buf, sizeof(buf), NULL, NULL) == 1 && buf[0] == 'q') {
-                break;
+            if (XLookupString(&ev.xkey, buf, sizeof(buf), NULL, NULL) == 1) {
+                if (buf[0] == 'q' || buf[0] == 27) break;
             }
         }
 
         if (ev.type == Expose) {
-            if (ev.xexpose.window == a.btnResize) {
-                drawButton(&a, a.btnResize, a.btnResizeX, a.btnResizeY,
-                          a.btnResizeW, a.btnResizeH,
-                          resizeBtnPressed ? "> Resizing..." : "Resize to 800x600",
-                          resizeBtnPressed);
-            } else if (ev.xexpose.window == a.btnRestore) {
-                char label[64];
-                snprintf(label, sizeof(label), "Restore %dx%d", a.mcOrigW, a.mcOrigH);
-                drawButton(&a, a.btnRestore, a.btnRestoreX, a.btnRestoreY,
-                          a.btnRestoreW, a.btnRestoreH,
-                          restoreBtnPressed ? "> Restoring..." : label,
-                          restoreBtnPressed);
-            }
+            if (ev.xexpose.window == a.guiWin) drawStatus(&a);
+            else if (ev.xexpose.window == a.btnResize)
+                drawButton(&a, a.btnResize, a.btnResizeW, a.btnResizeH,
+                          resizePressed ? "> Resizing..." : "Resize to 800x600", resizePressed);
+            else if (ev.xexpose.window == a.btnRestore) {
+                char lbl[64];
+                snprintf(lbl, sizeof(lbl), "Restore %dx%d", a.mcOrigW, a.mcOrigH);
+                drawButton(&a, a.btnRestore, a.btnRestoreW, a.btnRestoreH,
+                          restorePressed ? "> Restoring..." : lbl, restorePressed);
+            } else if (ev.xexpose.window == btnRefresh)
+                drawButton(&a, btnRefresh, btnRefreshW, btnRefreshH, "Refresh (rescan)", 0);
         }
 
         if (ev.type == ButtonPress && ev.xbutton.button == 1) {
             if (ev.xbutton.window == a.btnResize) {
-                resizeBtnPressed = 1;
-                drawButton(&a, a.btnResize, a.btnResizeX, a.btnResizeY,
-                          a.btnResizeW, a.btnResizeH, "> Resizing...", 1);
+                resizePressed = 1;
+                drawButton(&a, a.btnResize, a.btnResizeW, a.btnResizeH, "> Resizing...", 1);
                 XFlush(a.dpy);
                 resizeMC(&a, 800, 600);
+                drawStatus(&a);
             } else if (ev.xbutton.window == a.btnRestore) {
-                restoreBtnPressed = 1;
-                char label[64];
-                snprintf(label, sizeof(label), "> Restoring...");
-                drawButton(&a, a.btnRestore, a.btnRestoreX, a.btnRestoreY,
-                          a.btnRestoreW, a.btnRestoreH, label, 1);
+                restorePressed = 1;
+                char lbl[64];
+                snprintf(lbl, sizeof(lbl), "> Restoring...");
+                drawButton(&a, a.btnRestore, a.btnRestoreW, a.btnRestoreH, lbl, 1);
                 XFlush(a.dpy);
                 resizeMC(&a, a.mcOrigW, a.mcOrigH);
+                drawStatus(&a);
+            } else if (ev.xbutton.window == btnRefresh) {
+                refreshPressed = 1;
+                drawButton(&a, btnRefresh, btnRefreshW, btnRefreshH, "> Scanning...", 1);
+                XFlush(a.dpy);
+                char *newName = NULL;
+                Window newWin = findMinecraftWindow(a.dpy, root, &newName);
+                if (newWin) {
+                    a.mcWin = newWin;
+                    XWindowAttributes at;
+                    if (XGetWindowAttributes(a.dpy, a.mcWin, &at)) {
+                        a.mcOrigW = at.width;
+                        a.mcOrigH = at.height;
+                    }
+                    snprintf(a.statusText, sizeof(a.statusText),
+                             "Minecraft 0x%lx \"%s\" — %dx%d (refreshed)",
+                             a.mcWin, newName ? newName : "?", a.mcOrigW, a.mcOrigH);
+                    free(newName);
+                } else {
+                    snprintf(a.statusText, sizeof(a.statusText), "Minecraft not found!");
+                }
+                drawStatus(&a);
             }
         }
 
         if (ev.type == ButtonRelease && ev.xbutton.button == 1) {
             if (ev.xbutton.window == a.btnResize) {
-                resizeBtnPressed = 0;
-                drawButton(&a, a.btnResize, a.btnResizeX, a.btnResizeY,
-                          a.btnResizeW, a.btnResizeH, "Resize to 800x600", 0);
+                resizePressed = 0;
+                drawButton(&a, a.btnResize, a.btnResizeW, a.btnResizeH, "Resize to 800x600", 0);
             } else if (ev.xbutton.window == a.btnRestore) {
-                restoreBtnPressed = 0;
-                char label[64];
-                snprintf(label, sizeof(label), "Restore %dx%d", a.mcOrigW, a.mcOrigH);
-                drawButton(&a, a.btnRestore, a.btnRestoreX, a.btnRestoreY,
-                          a.btnRestoreW, a.btnRestoreH, label, 0);
+                restorePressed = 0;
+                char lbl[64];
+                snprintf(lbl, sizeof(lbl), "Restore %dx%d", a.mcOrigW, a.mcOrigH);
+                drawButton(&a, a.btnRestore, a.btnRestoreW, a.btnRestoreH, lbl, 0);
+            } else if (ev.xbutton.window == btnRefresh) {
+                refreshPressed = 0;
+                drawButton(&a, btnRefresh, btnRefreshW, btnRefreshH, "Refresh (rescan)", 0);
             }
         }
     }
