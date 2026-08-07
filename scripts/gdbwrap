@@ -86,15 +86,38 @@ def start(args):
                     pass
                 # Отправляем команду
                 child.sendline(cmd_text)
-                # Ждём следующий (gdb)
-                try:
-                    child.expect_exact("(gdb)", timeout=120)
-                except pexpect.EOF:
-                    output = "[EOF] " + (child.before or "")
-                except pexpect.TIMEOUT:
-                    output = "[TIMEOUT] " + (child.before or "")
-                else:
-                    output = child.before if child.before else "(no output)"
+                # Ждём (gdb) с периодической проверкой CMD (для interrupt)
+                output = ""
+                got_prompt = False
+                deadline = time.time() + 120
+                while time.time() < deadline:
+                    try:
+                        child.expect_exact("(gdb)", timeout=0.5)
+                        output = child.before if child.before else ""
+                        got_prompt = True
+                        break
+                    except pexpect.TIMEOUT:
+                        pass
+                    except pexpect.EOF:
+                        output = "[EOF] " + (child.before or "")
+                        break
+                    # Проверяем interrupt
+                    if os.path.exists(CMD):
+                        with open(CMD) as f:
+                            if f.read().strip() == "__INTERRUPT__":
+                                os.remove(CMD)
+                                import signal
+                                os.kill(child.pid, signal.SIGINT)
+                                try:
+                                    child.expect_exact("(gdb)", timeout=10)
+                                    output = child.before if child.before else "Interrupted"
+                                    got_prompt = True
+                                except:
+                                    output = "[INTERRUPT_FAIL] " + (child.before or "")
+                                    got_prompt = True
+                                break
+                if not got_prompt:
+                    output = output or "[TIMEOUT]"
                 with open(OUT, 'w') as f:
                     f.write(output)
         time.sleep(0.1)
