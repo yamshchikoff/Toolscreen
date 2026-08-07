@@ -374,16 +374,25 @@ int DetourXNextEvent(Display* display, XEvent* event_return) {
             if (bind) {
                 Window win = X11Display::GetGameWindow();
                 if (win) {
-                    if (bind->active) {
-                        HOOK_LOG("[Toolscreen] Hotkey: keycode=%u → restore %dx%d\n",
-                                 bind->keycode, bind->originalW, bind->originalH);
-                        DoTestResize(win, bind->originalW, bind->originalH);
-                        bind->active = false;
+                    // Сохраняем исходный размер при первом ресайзе
+                    if (ResizeConfig::GetOriginalW() == 0) {
+                        int sw, sh;
+                        X11Window::GetScreenSize(sw, sh);
+                        ResizeConfig::SetOriginalSize(sw, sh);
+                    }
+
+                    // Toggle между Fullscreen и режимом этой клавиши
+                    const char* active = ResizeConfig::GetActiveMode();
+                    if (active && strcmp(active, bind->mode.c_str()) == 0) {
+                        HOOK_LOG("[Toolscreen] Hotkey: keycode=%u → restore %dx%d (Fullscreen)\n",
+                                 bind->keycode, ResizeConfig::GetOriginalW(), ResizeConfig::GetOriginalH());
+                        DoTestResize(win, ResizeConfig::GetOriginalW(), ResizeConfig::GetOriginalH());
+                        ResizeConfig::SetActiveMode("");
                     } else {
-                        HOOK_LOG("[Toolscreen] Hotkey: keycode=%u → %dx%d\n",
-                                 bind->keycode, bind->width, bind->height);
+                        HOOK_LOG("[Toolscreen] Hotkey: keycode=%u → %dx%d (%s)\n",
+                                 bind->keycode, bind->width, bind->height, bind->mode.c_str());
                         DoTestResize(win, bind->width, bind->height);
-                        bind->active = true;
+                        ResizeConfig::SetActiveMode(bind->mode.c_str());
                     }
                 }
             }
