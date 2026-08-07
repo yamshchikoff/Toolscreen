@@ -18,6 +18,10 @@
 **Следующая попытка**: `XSendEvent(ConfigureRequest)` — **НЕ СРАБОТАЛО**.
 **Затем**: `XMoveResizeWindow` + синтетический `ConfigureNotify` — **НЕ СРАБОТАЛО**. GDB показал: код ресайза выкинут компилятором из бинарника (только fopen/vfprintf/fclose от HOOK_LOG, затем эпилог). Call к `RequestWindowResize` отсутствует.
 
+**Исправлено**: `[[gnu::noinline]] static void DoTestResize()` — компилятор больше не выкидывает. Подтверждено через `objdump` (call на offset 0x188).
+
+**GDB dprintf**: `DoTestResize` вызывается (3 срабатывания). Z ловится, код выполняется. Но `XMoveResizeWindow` не ресайзит окно Minecraft. Вывод: X11-функции ресайза не работают на этом окне.
+
 Следующий шаг: `XConfigureWindow`?
 
 **Файл**: `glx_hook.cpp` — DetourXNextEvent
