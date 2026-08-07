@@ -360,9 +360,9 @@ int DetourXNextEvent(Display* display, XEvent* event_return) {
             HOOK_LOG("[Toolscreen] KEY: type=%d keycode=%u\n",
                      g_debugEvent->type, g_debugEvent->xkey.keycode);
         }
-        // Минимальный тест Wide: LAlt → ресайз 800x600
-        if (g_debugEvent->type == KeyPress && g_debugEvent->xkey.keycode == 64) {
-            HOOK_LOG("[Toolscreen] ALT: resize to 800x600\n");
+        // Минимальный тест: Z (keycode 52) → ресайз 800x600
+        if (g_debugEvent->type == KeyPress && g_debugEvent->xkey.keycode == 52) {
+            HOOK_LOG("[Toolscreen] Z: resize to 800x600\n");
             Window win = X11Display::GetGameWindow();
             if (win) {
                 X11Window::RequestWindowResize(win, 800, 600);
