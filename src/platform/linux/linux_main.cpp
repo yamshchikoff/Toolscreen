@@ -8,6 +8,8 @@
 
 #include <GL/glew.h>
 #include "platform/linux/x11_display.h"
+#include "platform/linux/x11_window.h"
+#include "platform/linux/resize_thread.h"
 #include "platform/linux/glx_hook.h"
 #include "platform/linux/x11_input.h"
 #include "platform/linux/x11_cursor.h"
@@ -382,6 +384,12 @@ void ToolscreenLazyInit() {
         }
         TS_TRACE("[Toolscreen] LazyInit: InitPlatform OK\n");
 
+        // Открываем второе Display-соединение для ресайза в обход GLFW
+        X11Window::InitOwnDisplay();
+
+        // Запускаем выделенный поток для ресайза (собственное Display-соединение)
+        ResizeThread::Start();
+
         if (!InitLogger()) {
             TS_LOG("[Toolscreen] Logger init failed\n");
             TS_TRACE("[Toolscreen] LazyInit: InitLogger FAILED\n");
@@ -422,6 +430,8 @@ void ToolscreenLinuxShutdown() {
     TS_LOG("[Toolscreen] libtoolscreen.so unloading (destructor)\n");
 
     StopThreads();
+    ResizeThread::Stop();
+    X11Window::CloseOwnDisplay();
     GLXHook::Shutdown();
     X11Cursor::Shutdown();
     X11Display::Close();

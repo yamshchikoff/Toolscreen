@@ -19,6 +19,11 @@ namespace {
 std::mutex g_windowMutex;
 Window g_gameWindow = 0;
 
+// Второе Display-соединение — для ресайза в обход GLFW.
+// GLFW игнорирует XConfigureWindow на своём соединении.
+// Открываем своё — X-сервер сгенерирует настоящее ConfigureNotify.
+Display* g_ownDpy = nullptr;
+
 // EWMH atoms
 Atom g_netWmState = None;
 Atom g_netWmStateFullscreen = None;
@@ -36,6 +41,19 @@ void InitAtoms() {
 }
 
 } // namespace
+
+void InitOwnDisplay() {
+    if (!g_ownDpy) {
+        g_ownDpy = XOpenDisplay(nullptr);
+    }
+}
+
+void CloseOwnDisplay() {
+    if (g_ownDpy) {
+        XCloseDisplay(g_ownDpy);
+        g_ownDpy = nullptr;
+    }
+}
 
 Window GetGameWindow() {
     std::lock_guard<std::mutex> lock(g_windowMutex);
@@ -146,17 +164,21 @@ bool GetMonitorSizeForWindow(Window win, int& outW, int& outH) {
 }
 
 bool RequestWindowResize(Window win, int width, int height) {
-    Display* dpy = X11Display::Get();
+    // Используем СОБСТВЕННОЕ Display-соединение.
+    // X11Display::Get() — соединение GLFW, которое игнорирует наши XConfigureWindow.
+    // g_ownDpy — второе соединение, для X-сервера это как внешний запрос (аналог WM).
+    // Если второе соединение ещё не открыто — fallback на основное.
+    if (!g_ownDpy) InitOwnDisplay();
+    Display* dpy = g_ownDpy ? g_ownDpy : X11Display::Get();
     if (!dpy || !win) return false;
 
     InitAtoms();
 
-    // Попытка 5: XConfigureWindow — прямое изменение размера окна
     XWindowChanges changes;
     changes.width = width;
     changes.height = height;
     XConfigureWindow(dpy, win, CWWidth | CWHeight, &changes);
-    X11Display::Flush();
+    XFlush(dpy);
     return true;
 }
 
