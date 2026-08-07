@@ -38,19 +38,7 @@ void RT_LOG(const char* fmt, ...) {
 }
 
 // ---- X11 error handler (не абортит процесс) ----
-// XSetErrorHandler — процесс-глобален. Сохраняем предыдущий обработчик
-// и пробрасываем ему ошибки не с нашего Display-соединения.
-int (*g_prevErrorHandler)(Display*, XErrorEvent*) = nullptr;
-
-int ResizeThreadErrorHandler(Display* dpy, XErrorEvent* ev) {
-    // Ошибки с НАШЕГО соединения (g_dpy) — логируем и подавляем.
-    // Ошибки с других соединений (основной GLFW Display) — пробрасываем
-    // предыдущему обработчику, если он есть и g_dpy ещё жив.
-    if (!g_dpy || dpy != g_dpy) {
-        if (g_prevErrorHandler) return g_prevErrorHandler(dpy, ev);
-        return 0;
-    }
-
+int ResizeThreadErrorHandler(Display* /*dpy*/, XErrorEvent* ev) {
     char buf[256];
     XGetErrorText(ev->display, ev->error_code, buf, sizeof(buf));
     RT_LOG("[ResizeThread] X11 error: %s (opcode=%d, resource=0x%lx)\n",
@@ -67,7 +55,12 @@ void ThreadLoop() {
         RT_LOG("[ResizeThread] FATAL: XOpenDisplay failed\n");
         return;
     }
-    g_prevErrorHandler = XSetErrorHandler(ResizeThreadErrorHandler);
+    XSetErrorHandler(ResizeThreadErrorHandler);
+    RT_LOG("[ResizeThread] Display opened: %p\n", static_cast<void*>(g_dpy));
+    if (!g_dpy) {
+        RT_LOG("[ResizeThread] FATAL: XOpenDisplay failed\n");
+        return;
+    }
     RT_LOG("[ResizeThread] Display opened: %p\n", static_cast<void*>(g_dpy));
 
     while (!g_stop.load()) {
