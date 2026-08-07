@@ -786,6 +786,30 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
         }
     }
 
+    // Viewport clamping: установить viewport активного режима для СЛЕДУЮЩЕГО кадра.
+    // Sodium кеширует viewport (Java-сторона), native glViewport вызывается только
+    // при cache miss. Установленный здесь viewport продержится до смены фреймбуфера.
+    // Используем dlsym напрямую — LWJGL обходит LD_PRELOAD для GL-функций.
+    int vpW, vpH;
+    ResizeConfig::GetViewportForActiveMode(vpW, vpH);
+    static int s_lastVpW = 0;
+    static ViewportFunc s_nativeViewport = nullptr;
+    if (!s_nativeViewport) {
+        s_nativeViewport = reinterpret_cast<ViewportFunc>(dlsym(RTLD_NEXT, "glViewport"));
+    }
+    if (vpW > 0 && vpH > 0) {
+        if (vpW != s_lastVpW) {
+            HOOK_LOG("[Toolscreen] Viewport: clamp to %dx%d for next frame (native=%p)\n", vpW, vpH, (void*)s_nativeViewport);
+            s_lastVpW = vpW;
+        }
+        if (s_nativeViewport) s_nativeViewport(0, 0, vpW, vpH);
+    } else {
+        if (s_lastVpW != 0) {
+            HOOK_LOG("[Toolscreen] Viewport: pass-through restored\n");
+            s_lastVpW = 0;
+        }
+    }
+
     // Call the real SwapBuffers via saved dispatch table pointer.
     inHkSwap = false;
     auto* realImpl = g_realSwapBuffers.load(std::memory_order_acquire);
