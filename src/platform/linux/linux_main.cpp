@@ -412,7 +412,10 @@ void ToolscreenLazyInit() {
 
 static void DBG_PRINT(const char* msg) {
     int fd = open("/tmp/toolscreen_dbg.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
-    if (fd >= 0) { write(fd, msg, strlen(msg)); fsync(fd); close(fd); }
+    if (fd < 0) _exit(99);
+    write(fd, msg, strlen(msg));
+    fsync(fd);
+    close(fd);
 }
 
 extern "C" __attribute__((constructor))

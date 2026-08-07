@@ -812,7 +812,10 @@ bool IsHooked() { return g_realSwapBuffers.load() != nullptr; }
 // table[0x118/8] with our hk_glXSwapBuffers. This is a data-only patch.
 static void DBG_PRINT(const char* msg) {
     int fd = open("/tmp/toolscreen_dbg.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
-    if (fd >= 0) { write(fd, msg, strlen(msg)); fsync(fd); close(fd); }
+    if (fd < 0) _exit(98);
+    write(fd, msg, strlen(msg));
+    fsync(fd);
+    close(fd);
 }
 
 void InstallRuntimeHook() {
