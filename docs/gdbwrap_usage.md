@@ -2,9 +2,12 @@
 
 ## Запуск
 
+**Каждое подключение — с новым PID.** PID определяется заново через `pgrep` перед каждым `start`. Старый PID использовать нельзя — процесс мог перезапуститься.
+
 ```bash
-# Запустить сервер (блокирующий — в фоне):
-python3 scripts/gdbwrap start gdb <программа> &
+PID=$(pgrep -f "runtime/jre-legacy.*java" | head -1)
+python3 scripts/gdbwrap start gdb --pid $PID &
+```
 
 # Для процессов без sudo (если kernel.yama.ptrace_scope=0):
 python3 scripts/gdbwrap start gdb --pid <PID> &
