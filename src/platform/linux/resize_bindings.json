@@ -1,0 +1,34 @@
+{
+    "description": "Клавиши ресайза и целевые разрешения (из default.toml)",
+    "hotkeys": [
+        {
+            "key": "Z",
+            "keycode": 52,
+            "mode": "Thin",
+            "width": "max(330, roundEven(screenWidth / 8))",
+            "height": "roundEven(screenHeight * 0.95)",
+            "comment": "Узкий и высокий — 1/8 ширины, 95% высоты экрана"
+        },
+        {
+            "key": "J",
+            "keycode": 44,
+            "mode": "EyeZoom",
+            "width": 384,
+            "height": 16384,
+            "comment": "Фиксированная ширина 384px, сверхвысокий (16384px) для зума"
+        },
+        {
+            "key": "LAlt",
+            "keycode": 64,
+            "mode": "Wide",
+            "width": "roundEven(screenWidth * 0.98)",
+            "height": "screenHeight",
+            "comment": "98% ширины, полная высота экрана"
+        }
+    ],
+    "notes": {
+        "toggling": "Каждая клавиша — toggle между Fullscreen и указанным режимом",
+        "source": "src/config/default.toml — поля width/height из секций [[mode]]",
+        "exclusion_key": "RightAlt (keycode 114) — исключение для всех хоткеев"
+    }
+}
