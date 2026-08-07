@@ -103,6 +103,16 @@ bool RequestWindowClientResize(HWND hwnd, int width, int height, const char* sou
 
 Чтобы режимы EyeZoom и Thin работали корректно, `hk_glViewport` должен зажимать viewport до размеров целевого режима. Сейчас это TODO (`glx_hook.cpp:650`). Нужно перенести логику из Windows `hkglViewport` (`render.cpp`).
 
+### Ресайз через FindTopLevelWindow + _NET_CLIENT_LIST — работает ✅
+
+**2026-08-07**: До этого ресайз вызывался на окне, полученном через `glXGetCurrentDrawable()` — но это GLX-дочернее окно (`0x2e0000b`), а не топлевел (`0x2e00009`). `XConfigureWindow` на GLX child падает с BadWindow.
+
+**Попытка 1**: `FindTopLevelWindow` через `XQueryTree` (подъём по дереву до `WM_STATE`). **НЕ СРАБОТАЛО**: `XQueryTree` падает на GLX-окнах — они не в обычном X11-дереве.
+
+**Попытка 2**: `FindTopLevelWindow` через `_NET_CLIENT_LIST` (как внешняя программа `resize_gui.c`). Запрашиваем список топлевел-окон у WM, фильтруем по `WM_CLASS` содержащему "Minecraft". **СРАБОТАЛО**: ресайз через `XConfigureWindow` на втором Display-соединении (`g_ownDpy`) успешно меняет размер окна Minecraft из инжектора.
+
+**Ключевой вывод**: для ресайза нужно использовать топлевел-окно из `_NET_CLIENT_LIST`, а не GLX-дочернее из `glXGetCurrentDrawable()`.
+
 ## Альтернативный путь (если deadlock)
 
 Если `SwitchToMode` из `DetourXNextEvent` вызывает deadlock:
