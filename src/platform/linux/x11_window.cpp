@@ -147,22 +147,25 @@ bool RequestWindowResize(Window win, int width, int height) {
     Display* dpy = X11Display::Get();
     if (!dpy || !win) return false;
 
-    // Попытка 1: XResizeWindow (не работает — WM игнорирует)
-    // XResizeWindow(dpy, win, width, height);
+    // Попытка 3: XMoveResizeWindow (работает в обход WM)
+    XWindowAttributes attrs;
+    if (XGetWindowAttributes(dpy, win, &attrs)) {
+        XMoveResizeWindow(dpy, win, attrs.x, attrs.y, width, height);
+        X11Display::Flush();
+    }
 
-    // Попытка 2: XSendEvent с ConfigureRequest — имитация запроса от WM
-    XConfigureRequestEvent req;
-    memset(&req, 0, sizeof(req));
-    req.type = ConfigureRequest;
-    req.display = dpy;
-    req.window = win;
-    req.width = width;
-    req.height = height;
-    req.value_mask = CWWidth | CWHeight;
-
-    Window root = RootWindow(dpy, DefaultScreen(dpy));
-    XSendEvent(dpy, root, False, SubstructureRedirectMask | SubstructureNotifyMask,
-               reinterpret_cast<XEvent*>(&req));
+    // Также шлём синтетический ConfigureNotify — чтобы LWJGL увидел новый размер
+    XConfigureEvent cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.type = ConfigureNotify;
+    cfg.display = dpy;
+    cfg.window = win;
+    cfg.width = width;
+    cfg.height = height;
+    cfg.border_width = 0;
+    cfg.above = None;
+    cfg.override_redirect = False;
+    XSendEvent(dpy, win, False, StructureNotifyMask, reinterpret_cast<XEvent*>(&cfg));
     X11Display::Flush();
     return true;
 }
