@@ -13,6 +13,7 @@
 #include "platform/linux/hotkey_detect.h"
 #include "platform/linux/x11_event_filter.h"
 #include "platform/linux/x11_window.h"
+#include "platform/linux/resize_config.h"
 #include "platform/linux/x86_length_disasm.h"
 #include "gui/imgui_impl_x11.h"
 #include "imgui.h"
@@ -351,11 +352,11 @@ static int (*g_realXNextEvent)(Display*, XEvent*) = nullptr;
 static XEvent* volatile g_debugEvent = nullptr;
 
 [[gnu::noinline]]
-static void DoTestResize(Window win) {
-    HOOK_LOG("[Toolscreen] DoTestResize: glxChild=0x%lx\n", win);
+static void DoTestResize(Window win, int width, int height) {
+    HOOK_LOG("[Toolscreen] DoTestResize: glxChild=0x%lx target=%dx%d\n", win, width, height);
     Window top = X11Window::FindTopLevelWindow(X11Display::Get(), win);
     HOOK_LOG("[Toolscreen] DoTestResize: topLevel=0x%lx\n", top);
-    X11Window::RequestWindowResize(top ? top : win, 800, 600);
+    X11Window::RequestWindowResize(top ? top : win, width, height);
     HOOK_LOG("[Toolscreen] DoTestResize: done\n");
 }
 
@@ -363,19 +364,20 @@ int DetourXNextEvent(Display* display, XEvent* event_return) {
     if (!g_realXNextEvent) return -1;
     g_debugEvent = event_return;
     volatile int result = g_realXNextEvent(display, event_return);
-    // Здесь *g_debugEvent уже заполнен
     if (g_debugEvent) {
         if (g_debugEvent->type == KeyPress || g_debugEvent->type == KeyRelease) {
             HOOK_LOG("[Toolscreen] KEY: type=%d keycode=%u\n",
                      g_debugEvent->type, g_debugEvent->xkey.keycode);
         }
-        // Минимальный тест: Z (keycode 52) → ресайз 800x600
-        // __attribute__((noinline)) чтобы компилятор не выкинул
-        if (g_debugEvent->type == KeyPress && g_debugEvent->xkey.keycode == 52) {
-            HOOK_LOG("[Toolscreen] Z: resize to 800x600\n");
-            Window win = X11Display::GetGameWindow();
-            if (win) {
-                DoTestResize(win);
+        if (g_debugEvent->type == KeyPress) {
+            auto* bind = ResizeConfig::Find(g_debugEvent->xkey.keycode);
+            if (bind) {
+                HOOK_LOG("[Toolscreen] Hotkey: keycode=%u → %dx%d\n",
+                         bind->keycode, bind->width, bind->height);
+                Window win = X11Display::GetGameWindow();
+                if (win) {
+                    DoTestResize(win, bind->width, bind->height);
+                }
             }
         }
     }

@@ -78,6 +78,7 @@ else()
         ${TOOLSCREEN_PLATFORM_DIR}/glx_hook.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/hotkey_detect.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/x11_event_filter.cpp
+        ${TOOLSCREEN_PLATFORM_DIR}/resize_config.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/x86_length_disasm.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/x11_input.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/x11_capture.cpp

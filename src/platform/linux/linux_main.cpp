@@ -9,6 +9,7 @@
 #include <GL/glew.h>
 #include "platform/linux/x11_display.h"
 #include "platform/linux/x11_window.h"
+#include "platform/linux/resize_config.h"
 #include "platform/linux/glx_hook.h"
 #include "platform/linux/x11_input.h"
 #include "platform/linux/x11_cursor.h"
@@ -385,6 +386,11 @@ void ToolscreenLazyInit() {
 
         // Открываем второе Display-соединение для ресайза в обход GLFW
         X11Window::InitOwnDisplay();
+
+        // Загружаем бинды клавиш ресайза из ~/.toolscreen/resize_bindings.json
+        int screenW, screenH;
+        X11Window::GetScreenSize(screenW, screenH);
+        ResizeConfig::Load(screenW, screenH);
 
         if (!InitLogger()) {
             TS_LOG("[Toolscreen] Logger init failed\n");
