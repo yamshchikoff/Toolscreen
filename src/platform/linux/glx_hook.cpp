@@ -810,7 +810,13 @@ bool IsHooked() { return g_realSwapBuffers.load() != nullptr; }
 // glXSwapBuffers does:  mov offset(%rip),%rax; jmp *0x118(%rax)
 // We load the table pointer from the mov instruction, then replace
 // table[0x118/8] with our hk_glXSwapBuffers. This is a data-only patch.
+static void DBG_PRINT(const char* msg) {
+    int fd = open("/tmp/toolscreen_dbg.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd >= 0) { write(fd, msg, strlen(msg)); fsync(fd); close(fd); }
+}
+
 void InstallRuntimeHook() {
+    DBG_PRINT("HOOK: enter\n");
     TRACE_CALL("[Toolscreen] InstallRuntimeHook: enter\n");
     static std::once_flag s_flag;
     std::call_once(s_flag, []() {

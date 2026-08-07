@@ -410,13 +410,24 @@ void ToolscreenLazyInit() {
     });
 }
 
+static void DBG_PRINT(const char* msg) {
+    int fd = open("/tmp/toolscreen_dbg.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd >= 0) { write(fd, msg, strlen(msg)); fsync(fd); close(fd); }
+}
+
 extern "C" __attribute__((constructor))
 void ToolscreenLinuxInit() {
+    DBG_PRINT("CTOR: enter\n");
     TS_TRACE("[Toolscreen] constructor: enter\n");
+    DBG_PRINT("CTOR: after TS_TRACE\n");
     TS_LOG("[Toolscreen] libtoolscreen.so loaded (constructor)\n");
+    DBG_PRINT("CTOR: after TS_LOG\n");
     TS_TRACE("[Toolscreen] constructor: calling InstallRuntimeHook\n");
+    DBG_PRINT("CTOR: before InstallRuntimeHook\n");
     GLXHook::InstallRuntimeHook();
+    DBG_PRINT("CTOR: after InstallRuntimeHook\n");
     TS_TRACE("[Toolscreen] constructor: done\n");
+    DBG_PRINT("CTOR: done\n");
 }
 
 // __attribute__((destructor)) runs when the .so is unloaded
