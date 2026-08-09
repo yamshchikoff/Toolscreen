@@ -704,6 +704,7 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
     }
 
     // Render ImGui overlay
+#ifndef TOOLSCREEN_DISABLE_IMGUI
     static int g_frameCounter = 0;
     ++g_frameCounter;
     bool shouldLog = (g_frameCounter % 100 == 1);
@@ -785,6 +786,7 @@ void hk_glXSwapBuffers(Display* dpy, GLXDrawable drawable) {
             }
         }
     }
+#endif  // TOOLSCREEN_DISABLE_IMGUI
 
     // Call the real SwapBuffers via saved dispatch table pointer.
     inHkSwap = false;
