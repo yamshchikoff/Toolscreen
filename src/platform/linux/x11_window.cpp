@@ -214,7 +214,16 @@ bool RequestWindowResize(Window win, int width, int height) {
     XWindowChanges changes;
     changes.width = width;
     changes.height = height;
-    XConfigureWindow(dpy, win, CWWidth | CWHeight, &changes);
+
+    // Центрируем окно на его мониторе
+    PlatformRect monitor;
+    if (GetMonitorRectForWindow(win, monitor)) {
+        changes.x = monitor.left + (monitor.width() - width) / 2;
+        changes.y = monitor.top + (monitor.height() - height) / 2;
+        XConfigureWindow(dpy, win, CWX | CWY | CWWidth | CWHeight, &changes);
+    } else {
+        XConfigureWindow(dpy, win, CWWidth | CWHeight, &changes);
+    }
     XFlush(dpy);
 
     f = fopen("/home/user/toolscreen.log", "a");
