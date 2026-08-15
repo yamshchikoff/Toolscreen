@@ -381,23 +381,21 @@ int DetourXNextEvent(Display* display, XEvent* event_return) {
                 s_lastHotkeyDown = g_debugEvent->xkey.keycode;
                 Window win = X11Display::GetGameWindow();
                 if (win) {
-                    // Сохраняем исходный размер при первом ресайзе
-                    if (ResizeConfig::GetOriginalW() == 0) {
-                        int sw, sh;
-                        X11Window::GetScreenSize(sw, sh);
-                        ResizeConfig::SetOriginalSize(sw, sh);
-                    }
+                    Window top = X11Window::FindTopLevelWindow(X11Display::Get(), win);
+                    if (!top) top = win;
 
-                    // Toggle между Fullscreen и режимом этой клавиши
+                    // Toggle между fullscreen и режимом этой клавиши
                     const char* active = ResizeConfig::GetActiveMode();
                     if (active && strcmp(active, bind->mode.c_str()) == 0) {
-                        HOOK_LOG("[Toolscreen] Hotkey: keycode=%u → restore %dx%d (Fullscreen)\n",
-                                 bind->keycode, ResizeConfig::GetOriginalW(), ResizeConfig::GetOriginalH());
-                        DoTestResize(win, ResizeConfig::GetOriginalW(), ResizeConfig::GetOriginalH());
+                        // restore → настоящий fullscreen (тот же механизм что F11)
+                        HOOK_LOG("[Toolscreen] Hotkey: keycode=%u → fullscreen\n", bind->keycode);
+                        X11Window::SetBorderlessFullscreen(top, true);
                         ResizeConfig::SetActiveMode("");
                     } else {
+                        // вход в режим → выйти из fullscreen + ресайз
                         HOOK_LOG("[Toolscreen] Hotkey: keycode=%u → %dx%d (%s)\n",
                                  bind->keycode, bind->width, bind->height, bind->mode.c_str());
+                        X11Window::SetBorderlessFullscreen(top, false);
                         DoTestResize(win, bind->width, bind->height);
                         ResizeConfig::SetActiveMode(bind->mode.c_str());
                     }

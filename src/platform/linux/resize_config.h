@@ -23,9 +23,4 @@ const HotkeyBinding* Find(uint32_t keycode);
 const char* GetActiveMode();
 void SetActiveMode(const char* mode);
 
-// Исходный размер окна (сохраняется при первом ресайзе)
-void SetOriginalSize(int w, int h);
-int GetOriginalW();
-int GetOriginalH();
-
 }  // namespace ResizeConfig

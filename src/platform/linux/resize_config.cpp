@@ -17,8 +17,6 @@ namespace {
 
 std::vector<HotkeyBinding> g_bindings;
 std::string g_activeMode;  // "" = Fullscreen
-int g_originalW = 0;
-int g_originalH = 0;
 
 // ---- Простой вычислитель выражений ----
 // Поддерживает: + - * / , max() roundEven() screenWidth screenHeight числа
@@ -216,13 +214,5 @@ const char* GetActiveMode() {
 void SetActiveMode(const char* mode) {
     g_activeMode = mode ? mode : "";
 }
-
-void SetOriginalSize(int w, int h) {
-    g_originalW = w;
-    g_originalH = h;
-}
-
-int GetOriginalW() { return g_originalW; }
-int GetOriginalH() { return g_originalH; }
 
 }  // namespace ResizeConfig
