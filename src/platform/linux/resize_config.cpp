@@ -1,5 +1,6 @@
 #include "resize_config.h"
 
+#include <X11/keysym.h>
 #include <cctype>
 #include <cmath>
 #include <cstdarg>
@@ -10,6 +11,9 @@
 #include <vector>
 
 #include <nlohmann/json.hpp>
+
+#include "keyname.h"
+#include "x11_display.h"
 
 namespace ResizeConfig {
 
@@ -156,7 +160,15 @@ bool Load(int screenW, int screenH) {
         auto json = nlohmann::json::parse(content);
         for (auto& hk : json["hotkeys"]) {
             HotkeyBinding b;
-            b.keycode = hk["keycode"].get<uint32_t>();
+            // Приоритет: если задана кнопка ("key") — резолвим keycode по имени,
+            // иначе берём числовой "keycode".
+            if (hk.contains("key") && hk["key"].is_string() && !hk["key"].get<std::string>().empty()) {
+                KeySym ks = KeyName::ToKeysym(hk["key"].get<std::string>());
+                Display* dpy = X11Display::Get();
+                b.keycode = dpy ? XKeysymToKeycode(dpy, ks) : 0;
+            } else {
+                b.keycode = hk["keycode"].get<uint32_t>();
+            }
             b.mode = hk["mode"].get<std::string>();
             bool ok = true;
 

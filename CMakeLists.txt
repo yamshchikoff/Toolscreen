@@ -79,6 +79,7 @@ else()
         ${TOOLSCREEN_PLATFORM_DIR}/hotkey_detect.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/x11_event_filter.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/resize_config.cpp
+        ${TOOLSCREEN_PLATFORM_DIR}/keyname.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/x86_length_disasm.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/x11_input.cpp
         ${TOOLSCREEN_PLATFORM_DIR}/x11_capture.cpp
@@ -1643,6 +1644,47 @@ if(UNIX AND NOT APPLE)
         add_test(
             NAME toolscreen_x11_event_filter_${test_case}
             COMMAND $<TARGET_FILE:toolscreen_x11_event_filter_tests> --run ${test_case}
+        )
+    endforeach()
+
+    add_executable(toolscreen_resize_config_tests
+        tests/resize_config_tests.cpp
+        ${TOOLSCREEN_PLATFORM_DIR}/keyname.cpp
+    )
+
+    target_include_directories(toolscreen_resize_config_tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${X11_X11_INCLUDE_PATH}
+    )
+
+    target_compile_definitions(toolscreen_resize_config_tests PRIVATE
+        NOMINMAX
+    )
+
+    target_link_libraries(toolscreen_resize_config_tests PRIVATE
+        ${X11_X11_LIB}
+        pthread
+    )
+
+    toolscreen_configure_target_outputs(toolscreen_resize_config_tests)
+    toolscreen_enable_release_symbols(toolscreen_resize_config_tests)
+
+    set(TOOLSCREEN_RESIZE_CONFIG_TEST_CASES
+        letter_j
+        letter_z
+        lowercase_j
+        left_alt
+        right_shift
+        f11
+        space
+        digit_5
+        unknown
+    )
+
+    foreach(test_case IN LISTS TOOLSCREEN_RESIZE_CONFIG_TEST_CASES)
+        add_test(
+            NAME toolscreen_resize_config_${test_case}
+            COMMAND $<TARGET_FILE:toolscreen_resize_config_tests> --run ${test_case}
         )
     endforeach()
 
