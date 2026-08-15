@@ -22,12 +22,10 @@ KeySym ToKeysym(const std::string& name) {
     auto it = aliases.find(name);
     if (it != aliases.end()) return it->second;
 
-    // Один символ [a-zA-Z0-9]
+    // Один печатный ASCII-символ (0x20–0x7E) → его keysym совпадает с кодом
     if (name.size() == 1) {
-        char c = name[0];
-        if (c >= 'a' && c <= 'z') return XK_a + (c - 'a');
-        if (c >= 'A' && c <= 'Z') return XK_A + (c - 'A');
-        if (c >= '0' && c <= '9') return XK_0 + (c - '0');
+        unsigned char c = (unsigned char)name[0];
+        if (c >= 0x20 && c <= 0x7E) return (KeySym)c;
     }
 
     // F1-F12, Escape, и т.п.

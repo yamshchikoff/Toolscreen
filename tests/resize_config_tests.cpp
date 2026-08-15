@@ -31,6 +31,10 @@ void RightShift() { CheckKeysym("RShift", XK_Shift_R); }
 void F11() { CheckKeysym("F11", XK_F11); }
 void Space() { CheckKeysym("Space", XK_space); }
 void Digit() { CheckKeysym("5", XK_5); }
+void Apostrophe() { CheckKeysym("'", XK_apostrophe); }
+void Period() { CheckKeysym(".", XK_period); }
+void Slash() { CheckKeysym("/", XK_slash); }
+void Dash() { CheckKeysym("-", XK_minus); }
 void Unknown() { CheckKeysym("NoSuchKey", NoSymbol); }
 
 }  // namespace
@@ -50,6 +54,10 @@ const std::vector<TestCase>& Registry() {
         {"f11", F11},
         {"space", Space},
         {"digit_5", Digit},
+        {"apostrophe", Apostrophe},
+        {"period", Period},
+        {"slash", Slash},
+        {"dash", Dash},
         {"unknown", Unknown},
     };
     return cases;

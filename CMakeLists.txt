@@ -1678,6 +1678,10 @@ if(UNIX AND NOT APPLE)
         f11
         space
         digit_5
+        apostrophe
+        period
+        slash
+        dash
         unknown
     )
 
