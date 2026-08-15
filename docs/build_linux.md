@@ -36,3 +36,32 @@ cmake ../.. -DCMAKE_BUILD_TYPE=Release -DTOOLSCREEN_ENABLE_IMGUI=ON
 ```bash
 sudo ./inject.sh
 ```
+
+## Конфигурация биндов ресайза
+
+Клавиши ресайза читаются из `~/.toolscreen/resize_bindings.json`.
+
+Скопировать эталон из репозитория:
+
+```bash
+mkdir -p ~/.toolscreen
+cp src/platform/linux/resize_bindings.json ~/.toolscreen/resize_bindings.json
+```
+
+Формат записи:
+
+```json
+{
+    "hotkeys": [
+        { "key": "Z",    "keycode": 52, "mode": "Thin",    "width": "...", "height": "..." },
+        { "key": "J",    "keycode": 44, "mode": "EyeZoom", "width": 384,  "height": 16384 },
+        { "key": "LAlt", "keycode": 64, "mode": "Wide",    "width": "...", "height": 0.25 }
+    ]
+}
+```
+
+- `key` — имя кнопки (`"Z"`, `"J"`, `"LAlt"`, `"F11"`, `"/"`). Если задано — keycode резолвится по имени, `keycode` игнорируется.
+- `keycode` — числовой X11 keycode, используется только если `key` отсутствует.
+- `width` / `height` — число или формула (`screenWidth`, `screenHeight`, `max`, `roundEven`).
+- Каждая клавиша — toggle: первое нажатие переводит в режим, повторное — возвращает fullscreen.
+
